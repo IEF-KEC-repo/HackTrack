@@ -64,7 +64,7 @@ export async function POST(
           ? "SUPER_ADMIN"
           : activeMembership?.role || "PARTICIPANT";
 
-      const token = signSessionToken({
+      const token = await signSessionToken({
         userId: user.id,
         email: user.email,
         name: user.name,
@@ -178,7 +178,7 @@ export async function POST(
       });
 
       // Auto-login newly registered user
-      const token = signSessionToken({
+      const token = await signSessionToken({
         userId: user.id,
         email: user.email,
         name: user.name,
@@ -305,7 +305,7 @@ export async function GET(
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    const payload = verifySessionToken(token);
+    const payload = await verifySessionToken(token);
     if (!payload) {
       return NextResponse.json({ user: null }, { status: 401 });
     }

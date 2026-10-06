@@ -2,11 +2,13 @@
 // Supports invite-only user verification, password hashing, and JWT session handling.
 
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { UserSessionContext, EditionRole, GlobalRole } from "./permissions";
 
 const JWT_SECRET = process.env.AUTH_SECRET || "hacktrack-default-dev-secret-change-in-prod";
 const TOKEN_EXPIRY = "7d";
+
+const secretKey = new TextEncoder().encode(JWT_SECRET);
 
 export interface SessionTokenPayload {
   userId: string;
@@ -37,17 +39,31 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 /**
  * Signs a session JWT payload.
  */
-export function signSessionToken(payload: Omit<SessionTokenPayload, "iat" | "exp">): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+export async function signSessionToken(
+  payload: Omit<SessionTokenPayload, "iat" | "exp">
+): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(TOKEN_EXPIRY)
+    .sign(secretKey);
 }
 
 /**
  * Verifies a session JWT and returns the parsed payload, or null if invalid/expired.
  */
-export function verifySessionToken(token: string): SessionTokenPayload | null {
+export async function verifySessionToken(
+  token: string
+): Promise<SessionTokenPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as SessionTokenPayload;
-  } catch {
+    const { payload } = await jwtVerify(token, secretKey, {
+      algorithms: ["HS256"],
+    });
+    return payload as unknown as SessionTokenPayload;
+  } catch (e) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[auth] verifySessionToken failed:", (e as Error)?.message);
+    }
     return null;
   }
 }

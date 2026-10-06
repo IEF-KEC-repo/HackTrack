@@ -49,6 +49,7 @@ export const NotificationBell: React.FC = () => {
   ]);
 
   const [unreadCount, setUnreadCount] = useState<number>(2);
+  const [authenticated, setAuthenticated] = useState<boolean>(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +57,12 @@ export const NotificationBell: React.FC = () => {
   const fetchNotifications = async () => {
     try {
       const res = await fetch("/api/notifications/list?limit=30");
+      if (res.status === 401 || res.status === 403) {
+        setAuthenticated(false);
+        return;
+      }
       if (res.ok) {
+        setAuthenticated(true);
         const data = await res.json();
         if (data.notifications && data.notifications.length > 0) {
           setNotifications(data.notifications);
@@ -69,10 +75,11 @@ export const NotificationBell: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!authenticated) return;
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000); // 1 minute poll
     return () => clearInterval(interval);
-  }, []);
+  }, [authenticated]);
 
   // Handle outside click to close dropdown
   useEffect(() => {

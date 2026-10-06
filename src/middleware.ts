@@ -18,7 +18,7 @@ function addSecurityHeaders(res: NextResponse): NextResponse {
   return res;
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const ip = req.ip || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
 
@@ -77,7 +77,7 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  const payload = token ? verifySessionToken(token) : null;
+  const payload = token ? await verifySessionToken(token) : null;
   const sessionContext = toSessionContext(payload);
 
   // ----------------------------------------------------

@@ -5,7 +5,7 @@ import { evaluateFeedbackVisibility } from "@/lib/services/normalization-engine"
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const payload = token ? verifySessionToken(token) : null;
+  const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
   const teamId = req.nextUrl.searchParams.get("teamId");

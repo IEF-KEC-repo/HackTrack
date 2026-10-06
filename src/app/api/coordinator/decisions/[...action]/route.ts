@@ -16,7 +16,7 @@ export async function GET(
 
   // Coordinator check
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const payload = token ? verifySessionToken(token) : null;
+  const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
   const userRole = session?.editionRole || "COORDINATOR_MANAGE";
 
@@ -51,7 +51,7 @@ export async function POST(
   const action = params.action?.[0];
 
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const payload = token ? verifySessionToken(token) : null;
+  const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
   const userRole = session?.editionRole || "COORDINATOR_MANAGE";
 
