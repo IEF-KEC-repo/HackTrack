@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { StageDecision, EditionRole } from "@prisma/client";
 import { createNotification } from "./notification-service";
 import { generateDeduplicationKey } from "./email-service";
+import { recordAuditLog } from "./audit-service";
 
 export interface RecordDecisionParams {
   eventId: string;
@@ -135,6 +136,31 @@ export async function recordTeamStageDecision(
           decision,
           notes,
           decidedById,
+        },
+      });
+    } catch {}
+  }
+
+  // Immutable audit trail: every formal stage decision is reviewable after the fact.
+  if (process.env.NODE_ENV !== "test") {
+    try {
+      const eventMeta = await prisma.event.findUnique({
+        where: { id: eventId },
+        select: { editionId: true },
+      });
+      await recordAuditLog({
+        editionId: eventMeta?.editionId,
+        actorId: decidedById,
+        action: "STAGE_DECISION_RECORDED",
+        entityType: "EventDecision",
+        entityId: dbDecision?.id || record.id,
+        newState: {
+          eventId,
+          teamId,
+          decision,
+          notes: notes || null,
+          eventName,
+          teamName,
         },
       });
     } catch {}
