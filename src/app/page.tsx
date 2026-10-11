@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   ArrowRight,
   Award,
@@ -334,64 +335,79 @@ export default function HomePage() {
             }}
           />
           <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:px-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-indigo-200">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-              </span>
-              Live Edition: {editionLine}
-            </div>
-
-            <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
-              Where collegiate ideas become{" "}
-              <span className="bg-gradient-to-r from-indigo-400 via-violet-400 to-cyan-400 bg-clip-text text-transparent">
-                shipping products
-              </span>
-            </h1>
-
-            <p className="mt-5 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
-              HackTrack is the annual multi-month innovation program of the
-              Innovation and Entrepreneurship Forum, Kongu Engineering College.
-              Teams move through a gated pipeline of evaluated stages, from a
-              1-minute pitch in Ideathon all the way to Demo Day — with
-              structured reviews, mentorship, and fair scoring at every gate.
-            </p>
-
-            <div className="mt-9 flex flex-wrap items-center gap-4">
-              <a
-                href="/auth/login"
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
-                Access the Portal
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </a>
-              <a
-                href="#pipeline"
-                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
-              >
-                <GitBranch className="h-4 w-4" aria-hidden="true" />
-                View the Pipeline
-              </a>
-            </div>
-
-            <dl className="mt-14 grid max-w-3xl grid-cols-2 gap-6 border-t border-white/10 pt-8 sm:grid-cols-4">
-              {[
-                { icon: GitBranch, label: "Gated Stages", value: events.length ? `${events.length}` : "7" },
-                { icon: CalendarDays, label: "Program Window", value: "Aug – Nov" },
-                { icon: Users, label: "Team Size", value: "1 – 6" },
-                { icon: Award, label: "Evaluation", value: "Panel + Jury" },
-              ].map(({ icon: Icon, label, value }) => (
-                <div key={label}>
-                  <Icon className="h-5 w-5 text-indigo-300" aria-hidden="true" />
-                  <dt className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {label}
-                  </dt>
-                  <dd className="mt-0.5 text-xl font-extrabold text-white">
-                    {value}
-                  </dd>
+            <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-indigo-200">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                  </span>
+                  Live Edition: {editionLine}
                 </div>
-              ))}
-            </dl>
+
+                <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
+                  Where collegiate ideas become{" "}
+                  <span className="bg-gradient-to-r from-indigo-400 via-violet-400 to-cyan-400 bg-clip-text text-transparent">
+                    shipping products
+                  </span>
+                </h1>
+
+                <p className="mt-5 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
+                  HackTrack is the annual multi-month innovation program of the
+                  Innovation and Entrepreneurship Forum, Kongu Engineering College.
+                  Teams move through a gated pipeline of evaluated stages, from a
+                  1-minute pitch in Ideathon all the way to Demo Day — with
+                  structured reviews, mentorship, and fair scoring at every gate.
+                </p>
+
+                <div className="mt-9 flex flex-wrap items-center gap-4">
+                  <a
+                    href="/auth/login"
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    Access the Portal
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </a>
+                  <a
+                    href="#pipeline"
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+                  >
+                    <GitBranch className="h-4 w-4" aria-hidden="true" />
+                    View the Pipeline
+                  </a>
+                </div>
+
+                <dl className="mt-14 grid max-w-3xl grid-cols-2 gap-6 border-t border-white/10 pt-8 sm:grid-cols-4">
+                  {[
+                    { icon: GitBranch, label: "Gated Stages", value: events.length ? `${events.length}` : "7" },
+                    { icon: CalendarDays, label: "Program Window", value: "Aug – Nov" },
+                    { icon: Users, label: "Team Size", value: "1 – 6" },
+                    { icon: Award, label: "Evaluation", value: "Panel + Jury" },
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label}>
+                      <Icon className="h-5 w-5 text-indigo-300" aria-hidden="true" />
+                      <dt className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        {label}
+                      </dt>
+                      <dd className="mt-0.5 text-xl font-extrabold text-white">
+                        {value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              <div className="flex justify-center lg:justify-end">
+                <Image
+                  src="/Mascot.png"
+                  alt="HackTrack mascot"
+                  width={1024}
+                  height={1536}
+                  priority
+                  className="h-72 w-auto object-contain drop-shadow-[0_25px_60px_rgba(99,102,241,0.35)] sm:h-96 lg:h-[30rem]"
+                />
+              </div>
+            </div>
           </div>
         </section>
 
