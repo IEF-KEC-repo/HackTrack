@@ -220,12 +220,11 @@ export async function computeCohortFunnel(editionId: string): Promise<CohortFunn
       stages,
     };
   } catch {
-    const total = inMemoryAnalyticsData.totalRegistered;
-    const stages = computeFunnelMetrics(total, inMemoryAnalyticsData.events);
+    // Never fabricate a funnel on a DB failure — return an empty, honest result.
     return {
       editionId,
-      totalRegisteredTeams: total,
-      stages,
+      totalRegisteredTeams: 0,
+      stages: [],
     };
   }
 }

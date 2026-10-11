@@ -113,7 +113,7 @@ export default function LoginPage() {
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
               Testing Shortcuts (Autofill Seeded Personas):
             </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs [&>button]:focus:outline-none [&>button]:focus:ring-2 [&>button]:focus:ring-indigo-500">
               <button
                 type="button"
                 onClick={() => autofill("superadmin@hacktrack.edu")}

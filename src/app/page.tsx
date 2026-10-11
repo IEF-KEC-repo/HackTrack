@@ -122,6 +122,16 @@ export default function HomePage() {
     };
   }, []);
 
+  // Close the mobile menu with the Escape key for keyboard users.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileNavOpen]);
+
   const edition = timeline?.edition ?? null;
   const events = timeline?.events ?? [];
   const editionLine = edition
@@ -130,10 +140,20 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-full flex-col bg-white">
+      {/* Skip link: lands keyboard/SR users directly in the main content */}
+      <a
+        href="#top"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white focus:shadow-lg focus:ring-2 focus:ring-white"
+      >
+        Skip to content
+      </a>
       {/* ============================= HEADER ============================= */}
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <a href="#top" className="flex items-center gap-2.5">
+          <a
+            href="#top"
+            className="flex items-center gap-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 font-extrabold text-white shadow-sm">
               HT
             </span>
@@ -171,8 +191,9 @@ export default function HomePage() {
 
           <button
             type="button"
-            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 md:hidden"
             aria-label="Toggle navigation menu"
+            aria-controls="mobile-navigation"
             aria-expanded={mobileNavOpen}
             onClick={() => setMobileNavOpen((v) => !v)}
           >
@@ -186,6 +207,7 @@ export default function HomePage() {
 
         {mobileNavOpen && (
           <nav
+            id="mobile-navigation"
             aria-label="Mobile"
             className="border-t border-slate-200 bg-white px-4 py-3 md:hidden"
           >
@@ -199,14 +221,14 @@ export default function HomePage() {
                 key={href}
                 href={href}
                 onClick={() => setMobileNavOpen(false)}
-                className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset"
               >
                 {label}
               </a>
             ))}
             <a
               href="/auth/login"
-              className="mt-2 block rounded-lg bg-indigo-600 px-3 py-2.5 text-center text-sm font-bold text-white"
+              className="mt-2 block rounded-lg bg-indigo-600 px-3 py-2.5 text-center text-sm font-bold text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-inset"
             >
               Login
             </a>
@@ -404,7 +426,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => window.location.reload()}
-                    className="mt-4 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-white hover:bg-white/10"
+                    className="mt-4 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-rose-300"
                   >
                     Retry
                   </button>
@@ -448,7 +470,7 @@ export default function HomePage() {
                             {statusLabel(event.status)}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs font-medium uppercase tracking-wider text-slate-500">
+                        <p className="mt-1 text-xs font-medium uppercase tracking-wider text-slate-400">
                           {event.reviewType === "ASYNC_MULTI_REVIEWER"
                             ? "Asynchronous multi-reviewer"
                             : "Live panel evaluation"}
@@ -562,7 +584,7 @@ export default function HomePage() {
                   key={q}
                   className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm open:border-indigo-300"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-black text-slate-900 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg text-sm font-black text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [&::-webkit-details-marker]:hidden">
                     {q}
                     <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 transition-transform group-open:rotate-180">
                       <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -583,7 +605,10 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-8 md:flex-row md:items-start">
             <div className="max-w-sm text-center md:text-left">
-              <a href="#top" className="inline-flex items-center gap-2.5">
+              <a
+                href="#top"
+                className="inline-flex items-center gap-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 font-extrabold text-white">
                   HT
                 </span>
@@ -602,21 +627,21 @@ export default function HomePage() {
             <div className="flex flex-col items-center gap-4">
               <a
                 href="/auth/login"
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500"
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 Login to the Portal
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </a>
               <a
-                href="#about"
-                className="text-xs font-semibold text-slate-400 hover:text-white"
+                href="#top"
+                className="rounded text-xs font-semibold text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-400"
               >
                 Back to top ↑
               </a>
             </div>
           </div>
 
-          <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-slate-500">
+          <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-slate-400">
             <p>
               © {new Date().getFullYear()} HackTrack · IEF@KEC · Kongu
               Engineering College

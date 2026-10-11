@@ -1,18 +1,34 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Modal } from "@/components/ui/Modal";
 
+interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  globalRole: string;
+  editionRole: string;
+}
+
+interface TimelineEventItem {
+  id: string;
+  name: string;
+  slug: string;
+  sequenceIndex: number;
+  status: string;
+}
+
 interface RankedTeam {
   rank: number;
   teamId: string;
   teamCode: string;
   teamName: string;
-  track: string;
+  track: string | null;
   normalizedScore: number;
   rawAverageScore: number;
   zScoreMean: number;
@@ -23,95 +39,55 @@ interface RankedTeam {
   decisionNotes?: string | null;
 }
 
+interface LeaderboardResponse {
+  published: boolean;
+  isPublished: boolean;
+  eventId: string | null;
+  eventName: string;
+  rankedTeams: RankedTeam[];
+  message?: string;
+}
+
+function mapRankedTeams(rows: any[] | undefined): RankedTeam[] {
+  return (rows || []).map((rt) => ({
+    rank: rt.rank,
+    teamId: rt.teamId,
+    teamCode: rt.regCode || rt.teamCode || "TEAM",
+    teamName: rt.teamName,
+    track: rt.track || null,
+    normalizedScore: rt.normalizedScore ?? 0,
+    rawAverageScore: rt.rawAverageScore ?? rt.rawAverage ?? 0,
+    zScoreMean: rt.zScoreMean ?? 0,
+    evaluatorCount: rt.evaluatorCount ?? rt.reviewerScores?.length ?? 0,
+    rankShift: rt.rankShift ?? 0,
+    tieBreakReason: rt.tieBreakReason ?? null,
+    stageDecision: rt.stageDecision ?? null,
+    decisionNotes: rt.decisionNotes ?? null,
+  })) as RankedTeam[];
+}
+
+const COORDINATOR_ROLES = ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW"];
+const MANAGE_ROLES = ["SUPER_ADMIN", "COORDINATOR_MANAGE"];
+
 export default function ResultsLeaderboardPage() {
-  // Current user role simulation (can switch between roles to test preview & gating)
-  const [userRole, setUserRole] = useState<string>("COORDINATOR_MANAGE");
+  const [session, setSession] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
 
-  // Leaderboard publication status state
-  const [isPublished, setIsPublished] = useState<boolean>(true);
-  const [selectedEventId, setSelectedEventId] = useState<string>("ev_ideathon");
+  // Real event configuration from the active edition.
+  const [events, setEvents] = useState<TimelineEventItem[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
 
-  // Action status message
+  // Real leaderboard payload from the API.
+  const [board, setBoard] = useState<LeaderboardResponse | null>(null);
+  const [boardLoading, setBoardLoading] = useState(false);
+  const [boardError, setBoardError] = useState<string | null>(null);
+
+  // Action feedback
   const [actionAlert, setActionAlert] = useState<{
-    type: "success" | "info" | "warning";
+    type: "success" | "info" | "warning" | "error";
     message: string;
   } | null>(null);
-
-  // Teams data
-  const [rankedTeams, setRankedTeams] = useState<RankedTeam[]>([
-    {
-      rank: 1,
-      teamId: "t_1",
-      teamCode: "HT26-T001",
-      teamName: "QuantumForge",
-      track: "AI/ML & Edge Computing",
-      normalizedScore: 92.45,
-      rawAverageScore: 89.0,
-      zScoreMean: 1.452,
-      evaluatorCount: 3,
-      rankShift: 2,
-      tieBreakReason: "Higher score on primary criterion (Problem Relevance)",
-      stageDecision: "CONTINUE",
-    },
-    {
-      rank: 2,
-      teamId: "t_2",
-      teamCode: "HT26-T002",
-      teamName: "BioSynth AI",
-      track: "Healthtech & Bio",
-      normalizedScore: 88.75,
-      rawAverageScore: 87.5,
-      zScoreMean: 0.985,
-      evaluatorCount: 3,
-      rankShift: 0,
-      tieBreakReason: null,
-      stageDecision: "CONTINUE",
-    },
-    {
-      rank: 3,
-      teamId: "t_3",
-      teamCode: "HT26-T003",
-      teamName: "SolarGrid Nexus",
-      track: "Clean Energy & IoT",
-      normalizedScore: 85.3,
-      rawAverageScore: 86.0,
-      zScoreMean: 0.612,
-      evaluatorCount: 3,
-      rankShift: -1,
-      tieBreakReason: null,
-      stageDecision: "CONDITIONAL",
-      decisionNotes: "Must submit hardware BOM and bench latency report before CPR 1.",
-    },
-    {
-      rank: 4,
-      teamId: "t_4",
-      teamCode: "HT26-T014",
-      teamName: "AeroVision Labs",
-      track: "Robotics & Drones",
-      normalizedScore: 78.1,
-      rawAverageScore: 79.0,
-      zScoreMean: -0.15,
-      evaluatorCount: 3,
-      rankShift: 1,
-      tieBreakReason: null,
-      stageDecision: "CONTINUE",
-    },
-    {
-      rank: 5,
-      teamId: "t_5",
-      teamCode: "HT26-T033",
-      teamName: "BlockVault Zero",
-      track: "FinTech & Security",
-      normalizedScore: 68.25,
-      rawAverageScore: 67.0,
-      zScoreMean: -1.22,
-      evaluatorCount: 3,
-      rankShift: -2,
-      tieBreakReason: null,
-      stageDecision: "EXIT",
-      decisionNotes: "Lack of novel consensus mechanism and missing slide deck evidence.",
-    },
-  ]);
+  const [actionBusy, setActionBusy] = useState(false);
 
   // Stage Decision Modal State
   const [isDecisionModalOpen, setIsDecisionModalOpen] = useState(false);
@@ -120,27 +96,105 @@ export default function ResultsLeaderboardPage() {
   const [decisionNotes, setDecisionNotes] = useState("");
 
   const isCoordinator =
-    userRole === "SUPER_ADMIN" ||
-    userRole === "COORDINATOR_MANAGE" ||
-    userRole === "COORDINATOR_VIEW";
+    session !== null && COORDINATOR_ROLES.includes(session.editionRole);
+  const canManage = session !== null && MANAGE_ROLES.includes(session.editionRole);
 
-  const canManage = userRole === "SUPER_ADMIN" || userRole === "COORDINATOR_MANAGE";
-
-  // Toggle Leaderboard Publication
-  const handleTogglePublication = () => {
-    if (!canManage) return;
-    const nextState = !isPublished;
-    setIsPublished(nextState);
-    setActionAlert({
-      type: nextState ? "success" : "info",
-      message: nextState
-        ? "Leaderboard published! Participants and mentors can now view official standings."
-        : "Leaderboard unpublished. Standings are now hidden from participants.",
-    });
+  const showAlert = (type: "success" | "info" | "warning" | "error", message: string) => {
+    setActionAlert({ type, message });
     setTimeout(() => setActionAlert(null), 6000);
   };
 
-  // Open Decision Modal
+  const loadBoard = useCallback(async (eventId: string) => {
+    setBoardLoading(true);
+    setBoardError(null);
+    try {
+      const res = await fetch(`/api/leaderboard/results?edition=ht26&eventId=${encodeURIComponent(eventId)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to load standings (HTTP ${res.status})`);
+      }
+      setBoard({
+        ...data,
+        rankedTeams: mapRankedTeams(data.rankedTeams),
+      } as LeaderboardResponse);
+    } catch (err: any) {
+      setBoardError(err.message || "Failed to load standings.");
+      setBoard(null);
+    } finally {
+      setBoardLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    (async () => {
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (!disposed && meData?.user) setSession(meData.user);
+        }
+      } catch {
+        /* session stays null; page-level middleware handles redirects */
+      }
+
+      try {
+        const tlRes = await fetch("/api/public/timeline?edition=ht26");
+        const tlData = await tlRes.json();
+        const eventRows: TimelineEventItem[] = (tlData?.events || []).map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          slug: e.slug,
+          sequenceIndex: e.sequenceIndex,
+          status: e.status,
+        }));
+        if (disposed) return;
+        setEvents(eventRows);
+        if (eventRows.length > 0) {
+          setSelectedEventId(eventRows[0].id);
+        }
+      } catch {
+        /* events stay empty */
+      } finally {
+        if (!disposed) setSessionLoading(false);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // Reload the board whenever the selected event changes.
+  useEffect(() => {
+    if (selectedEventId) {
+      loadBoard(selectedEventId);
+    }
+  }, [selectedEventId, loadBoard]);
+
+  const handleTogglePublication = async () => {
+    if (!canManage || !board?.eventId) return;
+    setActionBusy(true);
+    try {
+      const res = await fetch("/api/coordinator/decisions/publish-leaderboard", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ eventId: board.eventId, publish: !board.isPublished }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to update publication (HTTP ${res.status})`);
+      }
+      showAlert("success", data.message || "Leaderboard publication updated.");
+      await loadBoard(board.eventId);
+    } catch (err: any) {
+      showAlert("error", err.message || "Failed to update leaderboard publication.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const handleOpenDecisionModal = (team: RankedTeam) => {
     if (!canManage) return;
     setSelectedTeamForDecision(team);
@@ -149,43 +203,48 @@ export default function ResultsLeaderboardPage() {
     setIsDecisionModalOpen(true);
   };
 
-  // Save Decision
-  const handleSaveDecision = (e: React.FormEvent) => {
+  const handleSaveDecision = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTeamForDecision) return;
-
+    if (!selectedTeamForDecision || !board?.eventId) return;
     if (decisionType === "CONDITIONAL" && decisionNotes.trim().length < 5) {
-      alert("Conditional decisions require explicit remedial condition notes (min 5 chars).");
+      showAlert("error", "Conditional decisions require explicit remedial condition notes (min 5 chars).");
       return;
     }
-
     if (decisionType === "EXIT" && decisionNotes.trim().length < 5) {
-      alert("Stage elimination requires an exit rationale note.");
+      showAlert("error", "Stage elimination requires an exit rationale note.");
       return;
     }
 
-    setRankedTeams(
-      rankedTeams.map((t) =>
-        t.teamId === selectedTeamForDecision.teamId
-          ? {
-              ...t,
-              stageDecision: decisionType,
-              decisionNotes: decisionNotes.trim() || null,
-            }
-          : t
-      )
-    );
-
-    setIsDecisionModalOpen(false);
-    setActionAlert({
-      type: "success",
-      message: `Recorded decision '${decisionType}' for ${selectedTeamForDecision.teamName}. Team notified.`,
-    });
-    setTimeout(() => setActionAlert(null), 5000);
+    setActionBusy(true);
+    try {
+      const res = await fetch("/api/coordinator/decisions/record", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventId: board.eventId,
+          eventName: board.eventName,
+          teamId: selectedTeamForDecision.teamId,
+          teamName: selectedTeamForDecision.teamName,
+          decision: decisionType,
+          notes: decisionNotes.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to record decision (HTTP ${res.status})`);
+      }
+      setIsDecisionModalOpen(false);
+      showAlert("success", `Recorded decision '${decisionType}' for ${selectedTeamForDecision.teamName}. Team notified.`);
+      await loadBoard(board.eventId);
+    } catch (err: any) {
+      showAlert("error", err.message || "Failed to record the stage decision.");
+    } finally {
+      setActionBusy(false);
+    }
   };
 
-  // Check visibility for non-coordinators
-  const isHiddenFromViewer = !isPublished && !isCoordinator;
+  // Non-coordinators never see standings until the leaderboard is published.
+  const isHiddenFromViewer = !isCoordinator && board !== null && board.published !== true;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
@@ -207,44 +266,50 @@ export default function ResultsLeaderboardPage() {
               </p>
             </div>
 
-            {/* Quick Actions & Role Switcher */}
+            {/* Quick Actions */}
             <div className="flex flex-wrap items-center gap-3">
               {/* Event Selector */}
               <select
+                aria-label="Select event stage"
                 value={selectedEventId}
                 onChange={(e) => setSelectedEventId(e.target.value)}
+                disabled={events.length === 0}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-sm"
               >
-                <option value="ev_ideathon">Stage 1: Ideathon Screening</option>
-                <option value="ev_innovatz">Stage 2: Innovatz Review</option>
-                <option value="ev_cpr1">Stage 3: Continuous Review 1</option>
+                {events.length === 0 && <option value="">Loading stages…</option>}
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    Stage {ev.sequenceIndex}: {ev.name}
+                  </option>
+                ))}
               </select>
 
               {/* Coordinator Publication Toggle */}
               {canManage && (
                 <Button
                   size="sm"
-                  variant={isPublished ? "secondary" : "primary"}
+                  variant={board?.isPublished ? "secondary" : "primary"}
                   onClick={handleTogglePublication}
+                  disabled={actionBusy || boardLoading}
                   className={
-                    isPublished
+                    board?.isPublished
                       ? "border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
                       : "bg-emerald-600 hover:bg-emerald-700 text-white"
                   }
                 >
-                  {isPublished ? "🔒 Unpublish Leaderboard" : "📢 Publish to Participants"}
+                  {board?.isPublished ? "🔒 Unpublish Leaderboard" : "📢 Publish to Participants"}
                 </Button>
               )}
 
               {/* Export Links */}
-              <a href="/api/export/scores?edition=ht26" download>
+              <a href={`/api/export/scores?edition=ht26${selectedEventId ? `&eventId=${selectedEventId}` : ""}`} download>
                 <Button size="sm" variant="secondary">
                   Export CSV 📥
                 </Button>
               </a>
 
               <a
-                href="/api/export/report?edition=ht26&autoprint=true"
+                href={`/api/export/report?edition=ht26${selectedEventId ? `&eventId=${selectedEventId}` : ""}&autoprint=true`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -252,21 +317,6 @@ export default function ResultsLeaderboardPage() {
                   Print / PDF 🖨️
                 </Button>
               </a>
-
-              {/* Role Simulation Switcher (For Pair-Programming / Testing) */}
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
-                <span className="text-[10px] uppercase font-bold text-slate-500 px-1">Role:</span>
-                <select
-                  value={userRole}
-                  onChange={(e) => setUserRole(e.target.value)}
-                  className="bg-transparent font-semibold text-slate-700 text-xs outline-none"
-                >
-                  <option value="COORDINATOR_MANAGE">Coordinator (Manage)</option>
-                  <option value="COORDINATOR_VIEW">Coordinator (View-Only)</option>
-                  <option value="PARTICIPANT">Participant</option>
-                  <option value="MENTOR">Mentor</option>
-                </select>
-              </div>
             </div>
           </div>
         </div>
@@ -280,16 +330,29 @@ export default function ResultsLeaderboardPage() {
           </Alert>
         )}
 
-        {/* Status Banners */}
-        {isCoordinator && !isPublished && (
-          <Alert variant="warning" title="Draft Preview Mode Active">
-            This leaderboard is currently <strong>UNPUBLISHED</strong>. It is visible only to
-            coordinators and administrators. Participants cannot view scores or rankings until you click
-            &ldquo;Publish to Participants&rdquo;.
+        {!sessionLoading && !session && (
+          <Alert variant="warning" title="Authentication Required">
+            Please <Link className="underline font-semibold" href="/auth/login">log in</Link> to view
+            event standings.
           </Alert>
         )}
 
-        {/* GATING: Acceptance Criterion 2 - Hidden from participants when unpublished */}
+        {boardError && (
+          <Alert variant="error" title="Unable to Load Standings">
+            {boardError}
+          </Alert>
+        )}
+
+        {/* Draft preview banner for coordinators */}
+        {isCoordinator && board && !board.isPublished && (
+          <Alert variant="warning" title="Draft Preview Mode Active">
+            This leaderboard is currently <strong>UNPUBLISHED</strong>. It is visible only to
+            coordinators and administrators. Participants cannot view scores or rankings until you
+            click &ldquo;Publish to Participants&rdquo;.
+          </Alert>
+        )}
+
+        {/* GATING: hidden from participants until published */}
         {isHiddenFromViewer ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm max-w-2xl mx-auto space-y-4">
             <span className="text-5xl">⏳</span>
@@ -309,24 +372,37 @@ export default function ResultsLeaderboardPage() {
               </Link>
             </div>
           </div>
-        ) : (
+        ) : boardLoading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
+            <p className="text-sm text-slate-500">Loading official standings…</p>
+          </div>
+        ) : board && board.rankedTeams.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm max-w-2xl mx-auto space-y-2">
+            <span className="text-5xl">📊</span>
+            <h2 className="text-xl font-bold text-slate-900">No Evaluations Recorded Yet</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Rankings for &ldquo;{board.eventName}&rdquo; will appear here once the review panel
+              has completed evaluations for this stage.
+            </p>
+          </div>
+        ) : board ? (
           <>
             {/* Top 3 Podium Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
               {/* 2nd Place (Silver) */}
-              {rankedTeams[1] && (
+              {board.rankedTeams[1] && (
                 <div className="order-2 md:order-1 rounded-2xl border border-slate-300 bg-white p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
                   <div className="absolute top-0 right-0 bg-slate-200 text-slate-700 font-black text-xs px-3 py-1 rounded-bl-lg">
                     🥈 2ND PLACE
                   </div>
                   <div>
                     <span className="font-mono text-xs font-bold text-indigo-700">
-                      {rankedTeams[1].teamCode}
+                      {board.rankedTeams[1].teamCode}
                     </span>
                     <h3 className="text-lg font-bold text-slate-900 mt-1">
-                      {rankedTeams[1].teamName}
+                      {board.rankedTeams[1].teamName}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">{rankedTeams[1].track}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{board.rankedTeams[1].track}</p>
                   </div>
                   <div className="mt-6 pt-4 border-t border-slate-100 flex items-baseline justify-between">
                     <div>
@@ -334,30 +410,30 @@ export default function ResultsLeaderboardPage() {
                         Normalized Score
                       </span>
                       <p className="text-2xl font-black text-slate-800">
-                        {rankedTeams[1].normalizedScore.toFixed(2)}
+                        {board.rankedTeams[1].normalizedScore.toFixed(2)}
                       </p>
                     </div>
                     <span className="text-xs font-mono text-emerald-600 font-bold">
-                      +{rankedTeams[1].zScoreMean.toFixed(3)}σ
+                      +{board.rankedTeams[1].zScoreMean.toFixed(3)}σ
                     </span>
                   </div>
                 </div>
               )}
 
               {/* 1st Place (Gold) */}
-              {rankedTeams[0] && (
+              {board.rankedTeams[0] && (
                 <div className="order-1 md:order-2 rounded-2xl border-2 border-amber-400 bg-gradient-to-b from-amber-50/50 to-white p-6 shadow-md flex flex-col justify-between relative overflow-hidden transform md:-translate-y-2">
                   <div className="absolute top-0 right-0 bg-amber-400 text-amber-950 font-black text-xs px-3 py-1 rounded-bl-lg flex items-center gap-1">
                     🥇 1ST PLACE CHAMPION
                   </div>
                   <div>
                     <span className="font-mono text-xs font-bold text-indigo-700">
-                      {rankedTeams[0].teamCode}
+                      {board.rankedTeams[0].teamCode}
                     </span>
                     <h3 className="text-xl font-extrabold text-slate-900 mt-1">
-                      {rankedTeams[0].teamName}
+                      {board.rankedTeams[0].teamName}
                     </h3>
-                    <p className="text-xs text-slate-600 mt-0.5">{rankedTeams[0].track}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{board.rankedTeams[0].track}</p>
                   </div>
                   <div className="mt-6 pt-4 border-t border-amber-200/60 flex items-baseline justify-between">
                     <div>
@@ -365,30 +441,30 @@ export default function ResultsLeaderboardPage() {
                         Top Normalized Score
                       </span>
                       <p className="text-3xl font-black text-amber-900">
-                        {rankedTeams[0].normalizedScore.toFixed(2)}
+                        {board.rankedTeams[0].normalizedScore.toFixed(2)}
                       </p>
                     </div>
                     <span className="text-xs font-mono text-emerald-700 font-bold">
-                      +{rankedTeams[0].zScoreMean.toFixed(3)}σ
+                      +{board.rankedTeams[0].zScoreMean.toFixed(3)}σ
                     </span>
                   </div>
                 </div>
               )}
 
               {/* 3rd Place (Bronze) */}
-              {rankedTeams[2] && (
+              {board.rankedTeams[2] && (
                 <div className="order-3 rounded-2xl border border-orange-200 bg-white p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
                   <div className="absolute top-0 right-0 bg-orange-100 text-orange-800 font-black text-xs px-3 py-1 rounded-bl-lg">
                     🥉 3RD PLACE
                   </div>
                   <div>
                     <span className="font-mono text-xs font-bold text-indigo-700">
-                      {rankedTeams[2].teamCode}
+                      {board.rankedTeams[2].teamCode}
                     </span>
                     <h3 className="text-lg font-bold text-slate-900 mt-1">
-                      {rankedTeams[2].teamName}
+                      {board.rankedTeams[2].teamName}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">{rankedTeams[2].track}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{board.rankedTeams[2].track}</p>
                   </div>
                   <div className="mt-6 pt-4 border-t border-slate-100 flex items-baseline justify-between">
                     <div>
@@ -396,11 +472,11 @@ export default function ResultsLeaderboardPage() {
                         Normalized Score
                       </span>
                       <p className="text-2xl font-black text-slate-800">
-                        {rankedTeams[2].normalizedScore.toFixed(2)}
+                        {board.rankedTeams[2].normalizedScore.toFixed(2)}
                       </p>
                     </div>
                     <span className="text-xs font-mono text-emerald-600 font-bold">
-                      +{rankedTeams[2].zScoreMean.toFixed(3)}σ
+                      +{board.rankedTeams[2].zScoreMean.toFixed(3)}σ
                     </span>
                   </div>
                 </div>
@@ -413,14 +489,14 @@ export default function ResultsLeaderboardPage() {
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Comprehensive Official Standings</h2>
                   <p className="text-xs text-slate-500">
-                    Calculated with 3-reviewer Ideathon allocation and standardized cohort Z-scores
+                    Calculated with standardized cohort Z-score normalization
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="purple" size="sm">
-                    {rankedTeams.length} Teams Evaluated
+                    {board.rankedTeams.length} Teams Evaluated
                   </Badge>
-                  {isPublished ? (
+                  {board.isPublished ? (
                     <Badge variant="success" size="sm">Publicly Visible</Badge>
                   ) : (
                     <Badge variant="warning" size="sm">Unpublished Draft</Badge>
@@ -430,6 +506,9 @@ export default function ResultsLeaderboardPage() {
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
+                  <caption className="sr-only">
+                    Official standings for {board.eventName} ranked by normalized score
+                  </caption>
                   <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                     <tr>
                       <th className="py-3.5 px-4 text-center">Rank</th>
@@ -445,7 +524,7 @@ export default function ResultsLeaderboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {rankedTeams.map((team) => {
+                    {board.rankedTeams.map((team) => {
                       const isTop3 = team.rank <= 3;
                       return (
                         <tr
@@ -545,7 +624,7 @@ export default function ResultsLeaderboardPage() {
               </div>
             </div>
           </>
-        )}
+        ) : null}
       </div>
 
       {/* Modal: Record Gate Stage Decision */}
@@ -568,7 +647,7 @@ export default function ResultsLeaderboardPage() {
               <button
                 type="button"
                 onClick={() => setDecisionType("CONTINUE")}
-                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors ${
+                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                   decisionType === "CONTINUE"
                     ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
                     : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
@@ -579,7 +658,7 @@ export default function ResultsLeaderboardPage() {
               <button
                 type="button"
                 onClick={() => setDecisionType("CONDITIONAL")}
-                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors ${
+                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                   decisionType === "CONDITIONAL"
                     ? "bg-amber-600 text-white border-amber-700 shadow-sm"
                     : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
@@ -590,7 +669,7 @@ export default function ResultsLeaderboardPage() {
               <button
                 type="button"
                 onClick={() => setDecisionType("EXIT")}
-                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors ${
+                className={`py-2 px-3 rounded-lg border text-xs font-bold text-center transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                   decisionType === "EXIT"
                     ? "bg-rose-600 text-white border-rose-700 shadow-sm"
                     : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
@@ -616,14 +695,14 @@ export default function ResultsLeaderboardPage() {
               required={decisionType !== "CONTINUE"}
               placeholder={
                 decisionType === "CONDITIONAL"
-                  ? "Detail mandatory milestones or revisions the team must complete before CPR 1..."
+                  ? "Detail mandatory milestones or revisions the team must complete before the next stage..."
                   : decisionType === "EXIT"
                   ? "Detail exit rationale and constructive feedback for the team..."
                   : "Optional commendation notes or specific advice for upcoming reviews..."
               }
               value={decisionNotes}
               onChange={(e) => setDecisionNotes(e.target.value)}
-              className="w-full rounded-md border border-slate-300 p-2.5 text-xs focus:ring-1 focus:ring-indigo-600"
+              className="w-full rounded-md border border-slate-300 p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>
 
@@ -632,11 +711,12 @@ export default function ResultsLeaderboardPage() {
               variant="secondary"
               type="button"
               onClick={() => setIsDecisionModalOpen(false)}
+              disabled={actionBusy}
             >
               Cancel
             </Button>
-            <Button variant="primary" type="submit" className="bg-indigo-600 text-white">
-              Save Decision & Notify Team
+            <Button variant="primary" type="submit" className="bg-indigo-600 text-white" disabled={actionBusy}>
+              {actionBusy ? "Saving…" : "Save Decision & Notify Team"}
             </Button>
           </div>
         </form>
