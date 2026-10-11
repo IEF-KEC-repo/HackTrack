@@ -83,6 +83,7 @@ export const PUBLIC_PATHS = [
   /^\/auth\/forgot-password(\/.*)?$/,
   /^\/auth\/reset-password(\/.*)?$/,
   /^\/api\/auth(\/.*)?$/,
+  /^\/api\/public(\/.*)?$/,
   /^\/api\/health$/,
   /^\/api\/cron\/reminders$/,
   /^\/api\/cron\/milestone-alerts$/,
@@ -215,7 +216,13 @@ export function canAccessApiRoute(
   method: string = "GET"
 ): { allowed: boolean; reason?: string } {
   // Public API paths
-  if (/^\/api\/auth(\/.*)?$/.test(pathname) || /^\/api\/health$/.test(pathname) || /^\/api\/cron\/reminders$/.test(pathname) || /^\/api\/cron\/milestone-alerts$/.test(pathname)) {
+  if (
+    /^\/api\/auth(\/.*)?$/.test(pathname) ||
+    /^\/api\/public(\/.*)?$/.test(pathname) ||
+    /^\/api\/health$/.test(pathname) ||
+    /^\/api\/cron\/reminders$/.test(pathname) ||
+    /^\/api\/cron\/milestone-alerts$/.test(pathname)
+  ) {
     return { allowed: true };
   }
 
