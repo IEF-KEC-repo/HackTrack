@@ -1,0 +1,3 @@
+# Never upload local secret files to a Vercel deployment
+.env
+.env*.local
