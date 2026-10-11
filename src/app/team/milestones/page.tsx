@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -8,140 +8,145 @@ import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Modal } from "@/components/ui/Modal";
 
+type MilestoneStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+type MilestoneSource = "COORDINATOR_MANDATORY" | "TEAM_CUSTOM";
+type EvidenceType = "LINK" | "FILE";
+type TeamHealth = "GREEN" | "YELLOW" | "RED";
+
+interface TeamMentor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface TeamInfo {
+  id: string;
+  name: string;
+  regCode: string;
+  track?: string | null;
+  mentor?: TeamMentor | null;
+}
+
+interface MilestoneEvent {
+  id: string;
+  name: string;
+  slug: string;
+  uploadsEnabled: boolean;
+}
+
+interface EvidenceFile {
+  id: string;
+  originalName: string;
+  storedName: string;
+  fileUrl: string;
+  fileSize?: number | null;
+}
+
 interface MilestoneItem {
   id: string;
   title: string;
-  description?: string;
+  description?: string | null;
   dueDate: string;
-  source: "COORDINATOR_MANDATORY" | "TEAM_CUSTOM";
-  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+  source: MilestoneSource;
+  status: MilestoneStatus;
   isOverdue: boolean;
   isDueSoon: boolean;
-  daysOverdue?: number;
-  hoursRemaining?: number;
-  evidenceType?: "LINK" | "FILE";
-  evidenceUrl?: string;
-  evidenceNotes?: string;
-  evidenceFile?: {
-    id: string;
-    originalName: string;
-    storedName: string;
-    fileUrl: string;
-    fileSize?: number;
-  };
+  daysOverdue: number;
+  hoursRemaining: number;
+  event?: MilestoneEvent | null;
+  evidenceType?: EvidenceType | null;
+  evidenceUrl?: string | null;
+  evidenceNotes?: string | null;
+  evidenceFile?: EvidenceFile | null;
 }
 
 interface CheckInRecord {
   id: string;
   meetingDate: string;
-  health: "GREEN" | "YELLOW" | "RED";
-  progressNotes?: string;
-  blockers?: string;
-  nextGoals?: string;
-  evidenceUrl?: string;
-  notes?: string;
-  actionItems?: string;
+  health: TeamHealth;
+  progressNotes?: string | null;
+  blockers?: string | null;
+  nextGoals?: string | null;
+  evidenceUrl?: string | null;
+  notes?: string | null;
+  actionItems?: string | null;
   submittedByRole: string;
   createdAt: string;
-  mentor?: { name: string; email: string };
+  mentor?: TeamMentor | null;
+}
+
+interface CadenceSummary {
+  daysSinceLastCheckIn: number | null;
+  status: "ON_TRACK" | "CHECKIN_DUE" | "CHECKIN_OVERDUE";
+  isOverdue: boolean;
+  daysOverdue: number;
+  daysRemaining: number;
+  message: string;
+}
+
+interface ProgressSummary {
+  mandatoryTotal: number;
+  mandatoryCompleted: number;
+  mandatoryProgressPercent: number;
+  customTotal: number;
+  customCompleted: number;
+  totalCompleted: number;
+  totalMilestones: number;
+  overallProgressPercent: number;
+}
+
+interface MyTeamResponse {
+  team: TeamInfo;
+  milestones: MilestoneItem[];
+  progress: ProgressSummary;
+  cadence: CadenceSummary;
+  checkInsCount: number;
+}
+
+/** Client-side mirror of evaluateMilestoneDueStatus for locally patched milestones. */
+function evaluateDueStatus(
+  dueDate: string,
+  status: MilestoneStatus
+): Pick<MilestoneItem, "isOverdue" | "isDueSoon" | "daysOverdue" | "hoursRemaining"> {
+  if (status === "COMPLETED") {
+    return { isOverdue: false, isDueSoon: false, daysOverdue: 0, hoursRemaining: 0 };
+  }
+
+  const diffMs = new Date(dueDate).getTime() - Date.now();
+
+  if (diffMs < 0) {
+    const daysOverdue = Math.max(1, Math.ceil(Math.abs(diffMs) / (1000 * 60 * 60 * 24)));
+    return { isOverdue: true, isDueSoon: false, daysOverdue, hoursRemaining: 0 };
+  }
+
+  const hoursRemaining = Math.max(0, Math.round(diffMs / (1000 * 60 * 60)));
+  return {
+    isOverdue: false,
+    isDueSoon: hoursRemaining <= 48,
+    daysOverdue: 0,
+    hoursRemaining,
+  };
 }
 
 export default function TeamMilestonesPage() {
   const [activeTab, setActiveTab] = useState<"ALL" | "MANDATORY" | "CUSTOM" | "OVERDUE">("ALL");
 
-  // State
-  const [team] = useState({
-    id: "t_quantum",
-    regCode: "HT26-T001",
-    name: "QuantumForge",
-    track: "AI/ML & Edge Computing",
-    mentor: {
-      name: "Prof. Alan Turing",
-      email: "mentor@hacktrack.edu",
-    },
-    health: "GREEN" as "GREEN" | "YELLOW" | "RED",
-  });
-
-  const [milestones, setMilestones] = useState<MilestoneItem[]>([
-    {
-      id: "m_1",
-      title: "Problem Statement & Persona Validation Survey",
-      description: "Conduct interviews with at least 10 domain experts or end-users.",
-      dueDate: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(), // 2 days ago
-      source: "COORDINATOR_MANDATORY",
-      status: "COMPLETED",
-      isOverdue: false,
-      isDueSoon: false,
-      evidenceType: "LINK",
-      evidenceUrl: "https://docs.google.com/forms/d/1BxiMVs0XRA5nFMdKvBdBZjgm/analytics",
-      evidenceNotes: "Survey completed across 14 embedded robotics researchers.",
-    },
-    {
-      id: "m_2",
-      title: "Detailed Architecture Diagram & Hardware BOM Draft",
-      description: "Specify system component block diagrams and complete bill of materials for CPR 1.",
-      dueDate: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(), // 1 day ago
-      source: "COORDINATOR_MANDATORY",
-      status: "IN_PROGRESS",
-      isOverdue: true,
-      isDueSoon: false,
-      daysOverdue: 1,
-      evidenceNotes: "Drafting schematic in KiCad.",
-    },
-    {
-      id: "m_3",
-      title: "Proof of Concept: Firmware Quantization Kernel",
-      description: "Compile and run INT4 matrix multiplication benchmarks on target MCU.",
-      dueDate: new Date(Date.now() + 36 * 3600 * 1000).toISOString(), // in 36 hours
-      source: "COORDINATOR_MANDATORY",
-      status: "IN_PROGRESS",
-      isOverdue: false,
-      isDueSoon: true,
-      hoursRemaining: 36,
-    },
-    {
-      id: "m_4",
-      title: "CPR 1 Mid-Point Working Prototype Demo",
-      description: "Present working live bench test demonstration to panel.",
-      dueDate: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString(), // in 10 days
-      source: "COORDINATOR_MANDATORY",
-      status: "NOT_STARTED",
-      isOverdue: false,
-      isDueSoon: false,
-    },
-    {
-      id: "m_custom_1",
-      title: "Custom: PCB Testbench Layout v1",
-      description: "Internal team deliverable to manufacture prototype carrier board.",
-      dueDate: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
-      source: "TEAM_CUSTOM",
-      status: "NOT_STARTED",
-      isOverdue: false,
-      isDueSoon: false,
-    },
-  ]);
-
-  const [checkIns, setCheckIns] = useState<CheckInRecord[]>([
-    {
-      id: "ci_1",
-      meetingDate: new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString(),
-      health: "GREEN",
-      progressNotes: "Finalized quantization algorithms and submitted Ideathon slides deck.",
-      blockers: "Waiting on supplier quotes for edge FPGA chipsets.",
-      nextGoals: "Complete BOM and validate KiCad layout.",
-      submittedByRole: "TEAM",
-      createdAt: new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString(),
-      notes: "Team has solid conceptual grounding. Connect with Prof. Shannon for FPGA lab access.",
-      actionItems: "Submit KiCad schematics before Friday.",
-      mentor: { name: "Prof. Alan Turing", email: "mentor@hacktrack.edu" },
-    },
-  ]);
+  // Data (populated from the real API in useEffect)
+  const [team, setTeam] = useState<TeamInfo | null>(null);
+  const [milestones, setMilestones] = useState<MilestoneItem[]>([]);
+  const [progress, setProgress] = useState<ProgressSummary | null>(null);
+  const [checkIns, setCheckIns] = useState<CheckInRecord[]>([]);
+  const [cadence, setCadence] = useState<CadenceSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modals
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [customDescription, setCustomDescription] = useState("");
   const [customDueDate, setCustomDueDate] = useState("");
+  const [customError, setCustomError] = useState<string | null>(null);
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
 
   const [selectedMilestone, setSelectedMilestone] = useState<MilestoneItem | null>(null);
   const [evidenceMode, setEvidenceMode] = useState<"LINK" | "FILE">("LINK");
@@ -149,32 +154,81 @@ export default function TeamMilestonesPage() {
   const [evidenceNotes, setEvidenceNotes] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingEvidence, setIsSavingEvidence] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
   const [checkInProgress, setCheckInProgress] = useState("");
   const [checkInBlockers, setCheckInBlockers] = useState("");
   const [checkInNextGoals, setCheckInNextGoals] = useState("");
-  const [checkInHealth, setCheckInHealth] = useState<"GREEN" | "YELLOW" | "RED">("GREEN");
+  const [checkInHealth, setCheckInHealth] = useState<TeamHealth>("GREEN");
   const [checkInEvidenceUrl, setCheckInEvidenceUrl] = useState("");
   const [isSubmittingCheckIn, setIsSubmittingCheckIn] = useState(false);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadTeamMilestones = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      const res = await fetch("/api/milestones/my-team", { cache: "no-store" });
+      const data = (await res.json()) as MyTeamResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load your team milestones.");
+      }
+
+      setTeam(data.team);
+      setMilestones(data.milestones);
+      setProgress(data.progress);
+      setCadence(data.cadence);
+
+      // Full check-in history lives behind a dedicated endpoint on the same route file.
+      try {
+        const histRes = await fetch(
+          `/api/milestones/checkin-history?teamId=${encodeURIComponent(data.team.id)}`,
+          { cache: "no-store" }
+        );
+        const histData = (await histRes.json()) as { checkIns: CheckInRecord[] };
+        if (histRes.ok) {
+          setCheckIns(histData.checkIns);
+        } else {
+          setCheckIns([]);
+        }
+      } catch {
+        setCheckIns([]);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load your team milestones.");
+    } finally {
+      if (showLoading) setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTeamMilestones();
+  }, [loadTeamMilestones]);
 
   // Calculations
   const mandatoryMilestones = milestones.filter((m) => m.source === "COORDINATOR_MANDATORY");
-  const mandatoryCompleted = mandatoryMilestones.filter((m) => m.status === "COMPLETED").length;
-  const mandatoryTotal = mandatoryMilestones.length;
-  const progressPercent =
-    mandatoryTotal > 0 ? Math.round((mandatoryCompleted / mandatoryTotal) * 1000) / 10 : 100;
+  const mandatoryTotal = progress?.mandatoryTotal ?? mandatoryMilestones.length;
+  const mandatoryCompleted =
+    progress?.mandatoryCompleted ??
+    mandatoryMilestones.filter((m) => m.status === "COMPLETED").length;
+  const progressPercent = progress?.mandatoryProgressPercent ?? 100;
 
   const overdueCount = milestones.filter((m) => m.isOverdue).length;
 
-  // Cadence evaluation
-  const latestCheckIn = checkIns[0];
-  const daysSinceCheckIn = latestCheckIn
-    ? Math.floor((Date.now() - new Date(latestCheckIn.createdAt).getTime()) / (1000 * 60 * 60 * 24))
-    : 999;
-  const isCheckInOverdue = daysSinceCheckIn > 14;
-  const isCheckInDue = daysSinceCheckIn >= 10 && !isCheckInOverdue;
+  // Cadence evaluation (server-computed via checkin-service)
+  const isCheckInOverdue = cadence?.isOverdue ?? false;
+  const isCheckInDue = !isCheckInOverdue && cadence?.status === "CHECKIN_DUE";
+  const lastCheckInLabel =
+    cadence?.daysSinceLastCheckIn == null
+      ? "No check-in logged yet (14-day cycle)."
+      : `Last check-in logged ${cadence.daysSinceLastCheckIn} day${
+          cadence.daysSinceLastCheckIn === 1 ? "" : "s"
+        } ago (14-day cycle).`;
 
   // Filtered Milestones
   const filteredMilestones = milestones.filter((m) => {
@@ -185,71 +239,128 @@ export default function TeamMilestonesPage() {
   });
 
   // Handlers
-  const handleAddCustomMilestone = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customTitle || !customDueDate) return;
-
-    const newMilestone: MilestoneItem = {
-      id: `m_custom_${Date.now()}`,
-      title: customTitle,
-      description: customDescription,
-      dueDate: new Date(customDueDate).toISOString(),
-      source: "TEAM_CUSTOM",
-      status: "NOT_STARTED",
-      isOverdue: new Date(customDueDate).getTime() < Date.now(),
-      isDueSoon: false,
-    };
-
-    setMilestones([...milestones, newMilestone]);
-    setCustomTitle("");
-    setCustomDescription("");
-    setCustomDueDate("");
-    setIsAddCustomOpen(false);
+  const patchMilestoneLocally = (updated: MilestoneItem) => {
+    const due = evaluateDueStatus(updated.dueDate, updated.status);
+    setMilestones((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated, ...due } : m)));
   };
 
-  const handleUpdateStatus = (id: string, newStatus: MilestoneItem["status"]) => {
-    setMilestones(
-      milestones.map((m) => {
-        if (m.id === id) {
-          const isCompleted = newStatus === "COMPLETED";
-          return {
-            ...m,
-            status: newStatus,
-            isOverdue: isCompleted ? false : m.isOverdue,
-            isDueSoon: isCompleted ? false : m.isDueSoon,
-          };
-        }
-        return m;
-      })
+  const handleAddCustomMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!team || !customTitle || !customDueDate) return;
+
+    setIsCreatingCustom(true);
+    setCustomError(null);
+
+    try {
+      const res = await fetch("/api/milestones/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: team.id,
+          title: customTitle,
+          description: customDescription || undefined,
+          dueDate: new Date(customDueDate).toISOString(),
+        }),
+      });
+      const data = (await res.json()) as { milestone: MilestoneItem; error?: string };
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to create the custom milestone.");
+      }
+
+      const created = data.milestone;
+      const due = evaluateDueStatus(created.dueDate, created.status);
+      setMilestones((prev) => [...prev, { ...created, ...due }]);
+      setCustomTitle("");
+      setCustomDescription("");
+      setCustomDueDate("");
+      setIsAddCustomOpen(false);
+
+      // Re-sync server-computed progress/cadence after the team gained a milestone.
+      void loadTeamMilestones(false);
+    } catch (err) {
+      setCustomError(err instanceof Error ? err.message : "Failed to create the custom milestone.");
+    } finally {
+      setIsCreatingCustom(false);
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: MilestoneStatus) => {
+    // Optimistic update for snappy dropdown UX.
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              status: newStatus,
+              isOverdue: newStatus === "COMPLETED" ? false : m.isOverdue,
+              isDueSoon: newStatus === "COMPLETED" ? false : m.isDueSoon,
+            }
+          : m
+      )
     );
+
+    try {
+      const res = await fetch("/api/milestones/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamMilestoneId: id, status: newStatus }),
+      });
+      const data = (await res.json()) as { milestone: MilestoneItem; error?: string };
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to update milestone status.");
+      }
+      patchMilestoneLocally(data.milestone);
+      setActionError(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update milestone status.");
+      // Revert to server truth so UI does not mask the failure.
+      void loadTeamMilestones(false);
+    }
   };
 
   const handleSaveEvidence = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMilestone) return;
 
+    const uploadsEnabled = selectedMilestone.event ? selectedMilestone.event.uploadsEnabled : true;
+
     if (evidenceMode === "LINK") {
-      setMilestones(
-        milestones.map((m) => {
-          if (m.id === selectedMilestone.id) {
-            return {
-              ...m,
-              status: "COMPLETED",
-              isOverdue: false,
-              isDueSoon: false,
-              evidenceType: "LINK",
-              evidenceUrl: evidenceUrl || m.evidenceUrl,
-              evidenceNotes: evidenceNotes || m.evidenceNotes,
-            };
-          }
-          return m;
-        })
-      );
-      setSelectedMilestone(null);
-      setEvidenceUrl("");
-      setEvidenceNotes("");
+      setIsSavingEvidence(true);
+      setUploadError(null);
+
+      try {
+        const res = await fetch("/api/milestones/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teamMilestoneId: selectedMilestone.id,
+            status: "COMPLETED",
+            evidenceType: "LINK",
+            evidenceUrl: evidenceUrl || undefined,
+            evidenceNotes: evidenceNotes || undefined,
+          }),
+        });
+        const data = (await res.json()) as { milestone: MilestoneItem; error?: string };
+        if (!res.ok) {
+          throw new Error(data?.error || "Failed to save evidence.");
+        }
+
+        patchMilestoneLocally(data.milestone);
+        setSelectedMilestone(null);
+        setEvidenceUrl("");
+        setEvidenceNotes("");
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Failed to save evidence.");
+      } finally {
+        setIsSavingEvidence(false);
+      }
     } else {
       // File Upload
+      if (!uploadsEnabled) {
+        setUploadError("File uploads are disabled for this milestone's event stage.");
+        return;
+      }
+
       if (!selectedFile) {
         setUploadError("Please select a file to upload.");
         return;
@@ -261,7 +372,7 @@ export default function TeamMilestonesPage() {
       try {
         const formData = new FormData();
         formData.append("file", selectedFile);
-        formData.append("teamId", team.id);
+        formData.append("teamId", team?.id ?? "");
         formData.append("fileType", "MILESTONE_EVIDENCE");
 
         const res = await fetch("/api/artifacts/upload", {
@@ -269,66 +380,124 @@ export default function TeamMilestonesPage() {
           body: formData,
         });
 
-        const data = await res.json();
+        const uploadData = (await res.json()) as { artifact?: EvidenceFile; error?: string };
         if (!res.ok) {
-          throw new Error(data.error || "File upload failed.");
+          throw new Error(uploadData.error || "File upload failed.");
+        }
+        if (!uploadData.artifact) {
+          throw new Error("File upload response missing artifact.");
         }
 
-        // Attach uploaded artifact to milestone
-        setMilestones(
-          milestones.map((m) => {
-            if (m.id === selectedMilestone.id) {
-              return {
-                ...m,
-                status: "COMPLETED",
-                isOverdue: false,
-                isDueSoon: false,
-                evidenceType: "FILE",
-                evidenceFile: data.artifact,
-                evidenceNotes: evidenceNotes || m.evidenceNotes,
-              };
-            }
-            return m;
-          })
-        );
+        // Attach uploaded artifact to milestone via the real update route.
+        const updateRes = await fetch("/api/milestones/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teamMilestoneId: selectedMilestone.id,
+            status: "COMPLETED",
+            evidenceType: "FILE",
+            evidenceFileId: uploadData.artifact.id,
+            evidenceNotes: evidenceNotes || undefined,
+          }),
+        });
+        const updateData = (await updateRes.json()) as { milestone: MilestoneItem; error?: string };
+        if (!updateRes.ok) {
+          throw new Error(updateData?.error || "Failed to attach uploaded evidence.");
+        }
 
+        patchMilestoneLocally(updateData.milestone);
         setSelectedMilestone(null);
         setSelectedFile(null);
         setEvidenceNotes("");
-      } catch (err: any) {
-        setUploadError(err.message || "Failed to upload file.");
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Failed to upload file.");
       } finally {
         setIsUploading(false);
       }
     }
   };
 
-  const handleSubmitCheckIn = (e: React.FormEvent) => {
+  const handleSubmitCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!checkInProgress) return;
+    if (!team || !checkInProgress) return;
 
     setIsSubmittingCheckIn(true);
-    const newRecord: CheckInRecord = {
-      id: `ci_${Date.now()}`,
-      meetingDate: new Date().toISOString(),
-      health: checkInHealth,
-      progressNotes: checkInProgress,
-      blockers: checkInBlockers,
-      nextGoals: checkInNextGoals,
-      evidenceUrl: checkInEvidenceUrl,
-      submittedByRole: "TEAM",
-      createdAt: new Date().toISOString(),
-      mentor: { name: team.mentor.name, email: team.mentor.email },
-    };
+    setCheckInError(null);
 
-    setCheckIns([newRecord, ...checkIns]);
-    setCheckInProgress("");
-    setCheckInBlockers("");
-    setCheckInNextGoals("");
-    setCheckInEvidenceUrl("");
-    setIsSubmittingCheckIn(false);
-    setIsCheckInOpen(false);
+    try {
+      const res = await fetch("/api/milestones/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: team.id,
+          progressNotes: checkInProgress,
+          blockers: checkInBlockers || undefined,
+          nextGoals: checkInNextGoals || undefined,
+          health: checkInHealth,
+          evidenceUrl: checkInEvidenceUrl || undefined,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to submit check-in.");
+      }
+
+      setCheckInProgress("");
+      setCheckInBlockers("");
+      setCheckInNextGoals("");
+      setCheckInEvidenceUrl("");
+      setIsCheckInOpen(false);
+
+      // Re-sync cadence + timeline with server data.
+      void loadTeamMilestones(false);
+    } catch (err) {
+      setCheckInError(err instanceof Error ? err.message : "Failed to submit check-in.");
+    } finally {
+      setIsSubmittingCheckIn(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-xl border border-slate-200 bg-white p-10 shadow-sm flex flex-col items-center justify-center gap-3">
+          <div className="h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-700">Loading team milestones & check-ins…</p>
+          <p className="text-xs text-slate-400">Fetching live data from the HackTrack server.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-4">
+        <Alert variant="error" title="Unable to Load Milestones">
+          {loadError}
+        </Alert>
+        <div>
+          <Button variant="primary" size="sm" onClick={() => void loadTeamMilestones()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!team) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-4">
+        <Alert variant="warning" title="No Team Found">
+          You are not currently assigned to a team with milestones enabled.
+        </Alert>
+        <div>
+          <Button variant="primary" size="sm" onClick={() => void loadTeamMilestones()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
@@ -339,7 +508,9 @@ export default function TeamMilestonesPage() {
             <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full">
               {team.regCode}
             </span>
-            <span className="text-xs text-slate-500 font-medium">({team.track})</span>
+            {team.track && (
+              <span className="text-xs text-slate-500 font-medium">({team.track})</span>
+            )}
           </div>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">
             {team.name} — Rolling Milestones & Check-Ins
@@ -360,6 +531,12 @@ export default function TeamMilestonesPage() {
           </Button>
         </div>
       </div>
+
+      {actionError && (
+        <Alert variant="error" title="Update Failed">
+          {actionError}
+        </Alert>
+      )}
 
       {/* Progress & Mentorship Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -435,12 +612,12 @@ export default function TeamMilestonesPage() {
             </Badge>
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">{team.mentor.name}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {team.mentor ? team.mentor.name : "No mentor assigned"}
+            </p>
             <p className="text-xs text-slate-500">Assigned Faculty Mentor</p>
           </div>
-          <p className="text-xs text-slate-500">
-            Last check-in logged {daysSinceCheckIn} days ago (14-day cycle).
-          </p>
+          <p className="text-xs text-slate-500">{lastCheckInLabel}</p>
         </div>
       </div>
 
@@ -450,7 +627,7 @@ export default function TeamMilestonesPage() {
           variant="error"
           title="Fortnightly Mentor Check-In Overdue"
         >
-          Your team has not submitted a check-in within the 14-day window. Please submit your accomplishments and blockers immediately to maintain good standing.
+          {cadence?.message || "Your team has not submitted a check-in within the 14-day window."} Please submit your accomplishments and blockers immediately to maintain good standing.
         </Alert>
       )}
 
@@ -514,108 +691,133 @@ export default function TeamMilestonesPage() {
         </div>
 
         {/* Milestones List */}
-        <div className="divide-y divide-slate-100">
-          {filteredMilestones.map((m) => (
-            <div key={m.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/60 transition-colors">
-              <div className="space-y-1.5 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={m.source === "COORDINATOR_MANDATORY" ? "purple" : "default"}>
-                    {m.source === "COORDINATOR_MANDATORY" ? "Mandatory" : "Team Custom"}
-                  </Badge>
-
-                  {m.isOverdue && (
-                    <Badge variant="danger">
-                      🚨 Overdue ({m.daysOverdue} day{m.daysOverdue! > 1 ? "s" : ""})
+        {filteredMilestones.length === 0 ? (
+          <div className="p-10 text-center">
+            <p className="text-sm font-semibold text-slate-700">
+              {activeTab === "ALL"
+                ? "No milestones defined yet"
+                : activeTab === "OVERDUE"
+                ? "No overdue milestones 🎉"
+                : `No ${activeTab === "MANDATORY" ? "mandatory" : "custom"} milestones`}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {activeTab === "CUSTOM"
+                ? "Create your first team-defined milestone with the button above."
+                : activeTab === "ALL"
+                ? "Coordinator-defined and team custom milestones will appear here once created."
+                : "Your team is all caught up."}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredMilestones.map((m) => (
+              <div key={m.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/60 transition-colors">
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={m.source === "COORDINATOR_MANDATORY" ? "purple" : "default"}>
+                      {m.source === "COORDINATOR_MANDATORY" ? "Mandatory" : "Team Custom"}
                     </Badge>
-                  )}
 
-                  {m.isDueSoon && (
-                    <Badge variant="warning">
-                      ⏳ Due Soon ({m.hoursRemaining}h remaining)
-                    </Badge>
-                  )}
-
-                  <h3 className="font-semibold text-slate-900 text-sm">{m.title}</h3>
-                </div>
-
-                {m.description && <p className="text-xs text-slate-600 max-w-2xl">{m.description}</p>}
-
-                {/* Evidence snippet */}
-                {m.status === "COMPLETED" && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                      ✓ Evidence Provided:
-                    </span>
-                    {m.evidenceType === "LINK" && m.evidenceUrl && (
-                      <a
-                        href={m.evidenceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-indigo-600 underline font-mono hover:text-indigo-800 break-all"
-                      >
-                        {m.evidenceUrl}
-                      </a>
+                    {m.event && (
+                      <Badge variant="default">{m.event.name}</Badge>
                     )}
-                    {m.evidenceType === "FILE" && m.evidenceFile && (
-                      <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 border border-slate-200">
-                        📄 {m.evidenceFile.storedName}
-                      </span>
+
+                    {m.isOverdue && (
+                      <Badge variant="danger">
+                        🚨 Overdue ({m.daysOverdue} day{m.daysOverdue! > 1 ? "s" : ""})
+                      </Badge>
                     )}
-                    {m.evidenceNotes && (
-                      <span className="text-slate-500 italic">({m.evidenceNotes})</span>
+
+                    {m.isDueSoon && (
+                      <Badge variant="warning">
+                        ⏳ Due Soon ({m.hoursRemaining}h remaining)
+                      </Badge>
                     )}
+
+                    <h3 className="font-semibold text-slate-900 text-sm">{m.title}</h3>
                   </div>
-                )}
-              </div>
 
-              {/* Status and Action Controls */}
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <span className="text-[11px] text-slate-400 block font-medium">Due Date</span>
-                  <span className="text-xs font-mono font-semibold text-slate-700">
-                    {new Date(m.dueDate).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
+                  {m.description && <p className="text-xs text-slate-600 max-w-2xl">{m.description}</p>}
+
+                  {/* Evidence snippet */}
+                  {m.status === "COMPLETED" && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        ✓ Evidence Provided:
+                      </span>
+                      {m.evidenceType === "LINK" && m.evidenceUrl && (
+                        <a
+                          href={m.evidenceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 underline font-mono hover:text-indigo-800 break-all"
+                        >
+                          {m.evidenceUrl}
+                        </a>
+                      )}
+                      {m.evidenceType === "FILE" && m.evidenceFile && (
+                        <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 border border-slate-200">
+                          📄 {m.evidenceFile.storedName}
+                        </span>
+                      )}
+                      {m.evidenceNotes && (
+                        <span className="text-slate-500 italic">({m.evidenceNotes})</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Status Dropdown */}
-                <select
-                  value={m.status}
-                  onChange={(e) => handleUpdateStatus(m.id, e.target.value as any)}
-                  className={`rounded-md border text-xs font-semibold px-2.5 py-1.5 focus:outline-none focus:ring-1 ${
-                    m.status === "COMPLETED"
-                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                      : m.status === "IN_PROGRESS"
-                      ? "bg-amber-50 text-amber-800 border-amber-300"
-                      : m.status === "BLOCKED"
-                      ? "bg-rose-50 text-rose-800 border-rose-300"
-                      : "bg-slate-50 text-slate-700 border-slate-300"
-                  }`}
-                >
-                  <option value="NOT_STARTED">Not Started</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="BLOCKED">Blocked</option>
-                </select>
+                {/* Status and Action Controls */}
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-[11px] text-slate-400 block font-medium">Due Date</span>
+                    <span className="text-xs font-mono font-semibold text-slate-700">
+                      {new Date(m.dueDate).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedMilestone(m);
-                    setEvidenceUrl(m.evidenceUrl || "");
-                    setEvidenceNotes(m.evidenceNotes || "");
-                  }}
-                >
-                  {m.status === "COMPLETED" ? "Edit Evidence" : "Attach Proof"}
-                </Button>
+                  {/* Status Dropdown */}
+                  <select
+                    value={m.status}
+                    onChange={(e) => handleUpdateStatus(m.id, e.target.value as MilestoneStatus)}
+                    className={`rounded-md border text-xs font-semibold px-2.5 py-1.5 focus:outline-none focus:ring-1 ${
+                      m.status === "COMPLETED"
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                        : m.status === "IN_PROGRESS"
+                        ? "bg-amber-50 text-amber-800 border-amber-300"
+                        : m.status === "BLOCKED"
+                        ? "bg-rose-50 text-rose-800 border-rose-300"
+                        : "bg-slate-50 text-slate-700 border-slate-300"
+                    }`}
+                  >
+                    <option value="NOT_STARTED">Not Started</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="BLOCKED">Blocked</option>
+                  </select>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedMilestone(m);
+                      setEvidenceMode("LINK");
+                      setEvidenceUrl(m.evidenceUrl || "");
+                      setEvidenceNotes(m.evidenceNotes || "");
+                      setUploadError(null);
+                    }}
+                  >
+                    {m.status === "COMPLETED" ? "Edit Evidence" : "Attach Proof"}
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Fortnightly Check-In Timeline */}
@@ -633,9 +835,11 @@ export default function TeamMilestonesPage() {
         </div>
 
         {checkIns.length === 0 ? (
-          <p className="text-xs text-slate-400 text-center py-6">
-            No check-ins logged yet. Submit your first fortnightly report.
-          </p>
+          <div className="text-center py-6 space-y-1">
+            <p className="text-xs text-slate-400">
+              No check-ins logged yet. Submit your first fortnightly report.
+            </p>
+          </div>
         ) : (
           <div className="space-y-4">
             {checkIns.map((ci) => (
@@ -658,7 +862,7 @@ export default function TeamMilestonesPage() {
                     </Badge>
                   </div>
                   <span className="text-xs text-slate-400">
-                    Logged by {ci.mentor?.name || "Faculty Mentor"}
+                    {ci.mentor ? `Logged by ${ci.mentor.name}` : "Submitted by your team"}
                   </span>
                 </div>
 
@@ -706,6 +910,8 @@ export default function TeamMilestonesPage() {
         title="Add Team-Defined Milestone"
       >
         <form onSubmit={handleAddCustomMilestone} className="space-y-4">
+          {customError && <Alert variant="error" title="Creation Failed">{customError}</Alert>}
+
           <Input
             label="Milestone Title"
             required
@@ -739,7 +945,7 @@ export default function TeamMilestonesPage() {
             <Button variant="outline" type="button" onClick={() => setIsAddCustomOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit">
+            <Button variant="primary" type="submit" isLoading={isCreatingCustom}>
               Save Milestone
             </Button>
           </div>
@@ -755,6 +961,13 @@ export default function TeamMilestonesPage() {
         <form onSubmit={handleSaveEvidence} className="space-y-4">
           {uploadError && <Alert variant="error" title="Upload Failed">{uploadError}</Alert>}
 
+          {selectedMilestone?.event && !selectedMilestone.event.uploadsEnabled && (
+            <Alert variant="warning" title="Uploads Disabled for This Stage">
+              File uploads are disabled for the {`"${selectedMilestone.event.name}"`} stage. You can still
+              attach an external link as evidence.
+            </Alert>
+          )}
+
           {/* Evidence Type Switcher */}
           <div className="flex rounded-md border border-slate-200 p-1 bg-slate-50 text-xs">
             <button
@@ -768,10 +981,22 @@ export default function TeamMilestonesPage() {
             </button>
             <button
               type="button"
-              onClick={() => setEvidenceMode("FILE")}
-              className={`flex-1 py-1.5 rounded font-semibold text-center ${
+              onClick={() => {
+                const uploadsEnabled = selectedMilestone?.event
+                  ? selectedMilestone.event.uploadsEnabled
+                  : true;
+                if (!uploadsEnabled) {
+                  setUploadError("File uploads are disabled for this milestone's event stage.");
+                  return;
+                }
+                setEvidenceMode("FILE");
+              }}
+              disabled={
+                selectedMilestone?.event ? !selectedMilestone.event.uploadsEnabled : false
+              }
+              className={`flex-1 py-1.5 rounded font-semibold text-center transition-colors ${
                 evidenceMode === "FILE" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"
-              }`}
+              } ${selectedMilestone?.event && !selectedMilestone.event.uploadsEnabled ? "opacity-40 cursor-not-allowed" : "hover:bg-white"}`}
             >
               📁 File Upload (Renamed to {team.regCode})
             </button>
@@ -823,7 +1048,7 @@ export default function TeamMilestonesPage() {
             <Button variant="outline" type="button" onClick={() => setSelectedMilestone(null)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={isUploading}>
+            <Button variant="primary" type="submit" isLoading={isUploading || isSavingEvidence}>
               Mark Completed & Attach Evidence
             </Button>
           </div>
@@ -837,6 +1062,8 @@ export default function TeamMilestonesPage() {
         title="Submit Fortnightly Check-In Report"
       >
         <form onSubmit={handleSubmitCheckIn} className="space-y-4">
+          {checkInError && <Alert variant="error" title="Submission Failed">{checkInError}</Alert>}
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Progress & Accomplishments Since Last Check-In (Required)
@@ -883,7 +1110,7 @@ export default function TeamMilestonesPage() {
             </label>
             <select
               value={checkInHealth}
-              onChange={(e) => setCheckInHealth(e.target.value as any)}
+              onChange={(e) => setCheckInHealth(e.target.value as TeamHealth)}
               className="w-full rounded-md border border-slate-300 p-2 text-xs focus:ring-1 focus:ring-indigo-600 font-medium"
             >
               <option value="GREEN">🟢 Green — On Track, meeting all sprint targets</option>

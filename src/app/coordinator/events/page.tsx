@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CoordinatorShell } from "@/components/coordinator/CoordinatorShell";
+import { useEffect, useState } from "react";
+import { CoordinatorShell, useCoordinator } from "@/components/coordinator/CoordinatorShell";
 import { ActionButton } from "@/components/coordinator/ActionButton";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,268 +10,464 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 
+type ReviewType = "ASYNC_MULTI_REVIEWER" | "LIVE_PANEL";
+type CprCount = 3 | 4 | 5;
+
 interface EventItem {
   id: string;
   name: string;
   slug: string;
   sequenceIndex: number;
-  reviewType: "ASYNC_MULTI_REVIEWER" | "LIVE_PANEL";
+  reviewType: ReviewType;
   status: string;
+  submissionDeadline: string | null;
+  evaluationDeadline: string | null;
+  evaluatorCountPerTeam: number;
+  feedbackReleased: boolean;
+  isCalibrationActive: boolean;
+}
+
+// Shape returned by the coordinator API route for event records.
+interface ApiEvent {
+  id: string;
+  name: string;
+  slug: string;
+  sequenceIndex: number;
+  reviewType: ReviewType;
+  status?: string;
+  submissionDeadline?: string | null;
+  evaluationDeadline?: string | null;
+  evaluatorCountPerTeam?: number;
+  feedbackReleased?: boolean;
+  isCalibrationActive?: boolean;
+}
+
+interface EditionDataResponse {
+  edition?: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    events?: ApiEvent[];
+  } | null;
+  error?: string;
+}
+
+interface MutationResponse {
+  success?: boolean;
+  error?: string;
+  events?: ApiEvent[];
+}
+
+interface UpdateEventInput {
+  id: string;
+  name: string;
+  sequenceIndex: number;
+  reviewType: ReviewType;
+  submissionDeadline: string | null;
+  evaluationDeadline: string | null;
+}
+
+// Normalize raw stage records from the API into the page's render shape.
+function mapApiEvent(raw: ApiEvent): EventItem {
+  return {
+    id: raw.id,
+    name: raw.name,
+    slug: raw.slug,
+    sequenceIndex: raw.sequenceIndex,
+    reviewType: raw.reviewType,
+    status: raw.status ?? "UPCOMING",
+    submissionDeadline: raw.submissionDeadline ?? null,
+    evaluationDeadline: raw.evaluationDeadline ?? null,
+    evaluatorCountPerTeam: raw.evaluatorCountPerTeam ?? 3,
+    feedbackReleased: raw.feedbackReleased ?? false,
+    isCalibrationActive: raw.isCalibrationActive ?? false,
+  };
 }
 
 export default function EventsConfigPage() {
-  const [events, setEvents] = useState<EventItem[]>([
-    { id: "e1", name: "Ideathon", slug: "ideathon", sequenceIndex: 1, reviewType: "ASYNC_MULTI_REVIEWER", status: "SUBMISSION_OPEN" },
-    { id: "e2", name: "Innovatz", slug: "innovatz", sequenceIndex: 2, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-    { id: "e3", name: "Continuous Project Review 1 (CPR 1)", slug: "cpr-1", sequenceIndex: 3, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-    { id: "e4", name: "Continuous Project Review 2 (CPR 2)", slug: "cpr-2", sequenceIndex: 4, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-    { id: "e5", name: "Continuous Project Review 3 (CPR 3)", slug: "cpr-3", sequenceIndex: 5, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-    { id: "e6", name: "Proof of Concept (POC)", slug: "poc", sequenceIndex: 6, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-    { id: "e7", name: "Demo Day", slug: "demo-day", sequenceIndex: 7, reviewType: "LIVE_PANEL", status: "UPCOMING" },
-  ]);
+  const { isReadOnly, editionSlug } = useCoordinator();
 
-  const [cprCount, setCprCount] = useState<number>(3);
+  // Pipeline state is loaded live from the real edition configuration.
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [editionId, setEditionId] = useState<string>("");
+  const [editionName, setEditionName] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // The server stores no cprCount column — it is derived from the stage set.
+  const cprCount = events.filter((e) => e.slug.startsWith("cpr-")).length;
+
+  const [dirty, setDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSettingCpr, setIsSettingCpr] = useState(false);
+
   const [cloneModalOpen, setCloneModalOpen] = useState(false);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [newEventName, setNewEventName] = useState("");
-  const [newEventModality, setNewEventModality] = useState<"ASYNC_MULTI_REVIEWER" | "LIVE_PANEL">("LIVE_PANEL");
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [templateSlug, setTemplateSlug] = useState("ht25");
+  const [cloneName, setCloneName] = useState("");
+  const [cloneSlug, setCloneSlug] = useState("");
+  const [cloneAcademicYear, setCloneAcademicYear] = useState("2026-2027");
+  const [isCloning, setIsCloning] = useState(false);
 
-  // Move stage up
-  const moveUp = (index: number) => {
-    if (index === 0) return;
-    const updated = [...events];
-    const temp = updated[index - 1];
-    updated[index - 1] = updated[index];
-    updated[index] = temp;
-    updated.forEach((e, idx) => (e.sequenceIndex = idx + 1));
-    setEvents(updated);
-    setFeedback({ type: "success", msg: "Stage sequence updated. Remember to save changes." });
+  const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; msg: string } | null>(null);
+
+  // Load the real stage pipeline once on mount (and on manual retry).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(
+          `/api/coordinator/edition-data?slug=${encodeURIComponent(editionSlug)}`
+        );
+        const data: EditionDataResponse = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || `Failed to load edition data (HTTP ${res.status}).`);
+        }
+        const edition = data?.edition;
+        if (!edition) {
+          throw new Error(`Edition "${editionSlug}" was not found for the current coordinator context.`);
+        }
+        if (!active) return;
+        setEditionId(edition.id);
+        setEditionName(edition.name);
+        setEvents(edition.events?.map(mapApiEvent) ?? []);
+        setFeedback(null);
+      } catch (err) {
+        if (active) {
+          setLoadError(err instanceof Error ? err.message : "Failed to load pipeline data.");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [editionSlug, reloadKey]);
+
+  // Inline rename of an existing stage (persisted by Save Pipeline).
+  const handleRename = (id: string, name: string) => {
+    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, name } : e)));
+    setDirty(true);
   };
 
-  // Move stage down
-  const moveDown = (index: number) => {
-    if (index === events.length - 1) return;
+  // Reorder stage in the local draft (persisted by Save Pipeline).
+  const applyMove = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= events.length) return;
     const updated = [...events];
-    const temp = updated[index + 1];
-    updated[index + 1] = updated[index];
+    const temp = updated[target];
+    updated[target] = updated[index];
     updated[index] = temp;
-    updated.forEach((e, idx) => (e.sequenceIndex = idx + 1));
+    updated.forEach((e, idx) => {
+      e.sequenceIndex = idx + 1;
+    });
     setEvents(updated);
-    setFeedback({ type: "success", msg: "Stage sequence updated. Remember to save changes." });
-  };
-
-  // Handle CPR Count Change (3 to 5)
-  const handleCprChange = (count: number) => {
-    setCprCount(count);
-    // Dynamically regenerate CPR stages
-    const nonCprs = events.filter((e) => !e.slug.startsWith("cpr-"));
-    const ideathon = nonCprs.filter((e) => e.slug === "ideathon");
-    const innovatz = nonCprs.filter((e) => e.slug === "innovatz");
-    const poc = nonCprs.filter((e) => e.slug === "poc");
-    const demoDay = nonCprs.filter((e) => e.slug === "demo-day");
-    const others = nonCprs.filter((e) => !["ideathon", "innovatz", "poc", "demo-day"].includes(e.slug));
-
-    const newCprs: EventItem[] = [];
-    for (let i = 1; i <= count; i++) {
-      newCprs.push({
-        id: `cpr-${i}`,
-        name: `Continuous Project Review ${i} (CPR ${i})`,
-        slug: `cpr-${i}`,
-        sequenceIndex: 2 + i,
-        reviewType: "LIVE_PANEL",
-        status: "UPCOMING",
-      });
-    }
-
-    const merged = [...ideathon, ...innovatz, ...newCprs, ...poc, ...demoDay, ...others];
-    merged.forEach((e, idx) => (e.sequenceIndex = idx + 1));
-    setEvents(merged);
+    setDirty(true);
     setFeedback({
-      type: "success",
-      msg: `Configured pipeline for ${count} Continuous Project Review rounds.`,
+      type: "info",
+      msg: "Stage sequence updated in the draft. Click 'Save Pipeline Changes' to persist it.",
     });
   };
 
-  // Add Custom Event Stage
-  const handleAddEvent = () => {
-    if (!newEventName.trim()) return;
-    const slug = newEventName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
-    const updated = [
-      ...events,
-      {
-        id: `ev_${Date.now()}`,
-        name: newEventName.trim(),
-        slug,
-        sequenceIndex: events.length + 1,
-        reviewType: newEventModality,
-        status: "UPCOMING",
-      },
-    ];
-    setEvents(updated);
-    setAddModalOpen(false);
-    setNewEventName("");
-    setFeedback({ type: "success", msg: `Added event stage "${newEventName}".` });
+  // Persist reorder + rename edits for the existing stage set (no create/delete).
+  const savePipeline = async () => {
+    if (!editionId) return;
+    setIsSaving(true);
+    setFeedback(null);
+    try {
+      const payloadEvents: UpdateEventInput[] = events.map((e) => ({
+        id: e.id,
+        name: e.name.trim() || e.slug,
+        sequenceIndex: e.sequenceIndex,
+        reviewType: e.reviewType,
+        submissionDeadline: e.submissionDeadline,
+        evaluationDeadline: e.evaluationDeadline,
+      }));
+      const res = await fetch("/api/coordinator/update-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editionId, events: payloadEvents }),
+      });
+      const data: MutationResponse = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || "Failed to save pipeline changes.");
+      }
+      setEvents(data.events ? data.events.map(mapApiEvent) : events);
+      setDirty(false);
+      setFeedback({ type: "success", msg: "Pipeline saved. Stage order, names, and deadlines were persisted." });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Failed to save pipeline changes.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // Remove Event Stage
-  const handleRemoveEvent = (id: string, name: string) => {
-    const updated = events.filter((e) => e.id !== id);
-    updated.forEach((e, idx) => (e.sequenceIndex = idx + 1));
-    setEvents(updated);
-    setFeedback({ type: "success", msg: `Removed stage "${name}".` });
+  // Continuous Review stages are created/removed server-side via set-cpr-count.
+  const handleCprChange = async (count: CprCount) => {
+    if (!editionId || isSettingCpr || count === cprCount) return;
+    if (dirty && !window.confirm("You have unsaved reorder/rename changes that will be replaced by the server-side pipeline. Continue?")) {
+      return;
+    }
+    setIsSettingCpr(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/coordinator/set-cpr-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editionId, cprCount: count }),
+      });
+      const data: MutationResponse = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || "Failed to update Continuous Review depth.");
+      }
+      if (!data.events) {
+        throw new Error("Server returned no updated stage list.");
+      }
+      setEvents(data.events.map(mapApiEvent));
+      setDirty(false);
+      setFeedback({
+        type: "success",
+        msg: `Configured pipeline for ${count} Continuous Project Review rounds.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Failed to update Continuous Review depth.",
+      });
+    } finally {
+      setIsSettingCpr(false);
+    }
+  };
+
+  // Clone an entire prior edition into a clean workspace.
+  const handleClone = async () => {
+    if (!templateSlug || !cloneName.trim() || !cloneSlug.trim()) {
+      setFeedback({ type: "error", msg: "Template edition, new edition title, and new slug are required." });
+      return;
+    }
+    setIsCloning(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/coordinator/clone-edition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceSlug: templateSlug,
+          newName: cloneName.trim(),
+          newSlug: cloneSlug.trim().toLowerCase().replace(/\s+/g, "-"),
+          academicYear: cloneAcademicYear.trim() || undefined,
+        }),
+      });
+      const data: MutationResponse & { edition?: unknown } = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || "Failed to clone edition.");
+      }
+      setCloneModalOpen(false);
+      setFeedback({
+        type: "success",
+        msg: `Successfully cloned "${templateSlug}" into "${cloneName.trim()}" (${cloneSlug.trim().toLowerCase().replace(/\s+/g, "-")}). Reload this page on the new edition to see its pipeline.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Failed to clone edition.",
+      });
+    } finally {
+      setIsCloning(false);
+    }
   };
 
   return (
     <CoordinatorShell
       title="Event Pipeline & Program Lifecycle"
-      description="Configure, reorder, and add stages for HackTrack 2026. Set Continuous Project Review depth."
+      description={
+        editionName
+          ? `Configure, reorder, and rename the live stage pipeline for ${editionName}. Set Continuous Project Review depth.`
+          : "Configure, reorder, and rename the live stage pipeline. Set Continuous Project Review depth."
+      }
       action={
         <div className="flex gap-2">
           <ActionButton variant="outline" onClick={() => setCloneModalOpen(true)}>
             Clone From Prior Edition
           </ActionButton>
-          <ActionButton onClick={() => setAddModalOpen(true)}>+ Add Custom Stage</ActionButton>
+          <ActionButton
+            disabled
+            title="Stage count is configured via Continuous Reviews (3–5) and edition cloning"
+          >
+            + Add Custom Stage
+          </ActionButton>
         </div>
       }
     >
       <div className="space-y-6">
         {feedback && (
-          <Alert variant={feedback.type === "success" ? "success" : "error"} title="Pipeline Notice">
+          <Alert variant={feedback.type} title="Pipeline Notice">
             {feedback.msg}
           </Alert>
         )}
 
-        {/* CPR Count Selector Box */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Continuous Project Review (CPR) Depth
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Configure the number of rolling reviews between Innovatz (Screening) and POC (Proof of Concept).
-              </p>
+        {!loading && !loadError && (
+          <Alert variant="info" title="How stages are configured">
+            Stage count is configured via Continuous Reviews (3–5) and edition cloning. Individual
+            stage add/remove is not supported by the API, so those controls stay disabled.
+          </Alert>
+        )}
+
+        {loading ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm text-slate-500">Loading pipeline for {editionSlug}…</p>
+          </div>
+        ) : loadError ? (
+          <div className="space-y-4">
+            <Alert variant="error" title="Unable to load the event pipeline">
+              {loadError}
+            </Alert>
+            <div className="flex justify-end">
+              <ActionButton variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+                Retry Loading
+              </ActionButton>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-700">CPR Rounds:</span>
-              <div className="inline-flex rounded-md shadow-sm">
-                {[3, 4, 5].map((cnt) => (
-                  <ActionButton
-                    key={cnt}
-                    size="sm"
-                    variant={cprCount === cnt ? "primary" : "outline"}
-                    onClick={() => handleCprChange(cnt)}
-                    className="first:rounded-r-none last:rounded-l-none first:border-r-0 last:border-l-0"
-                  >
-                    {cnt} Rounds
-                  </ActionButton>
-                ))}
+          </div>
+        ) : (
+          <>
+            {/* CPR Count Selector Box */}
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Continuous Project Review (CPR) Depth
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Configure the number of rolling reviews between Innovatz (Screening) and POC (Proof of Concept).
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-slate-700">CPR Rounds:</span>
+                  <div className="inline-flex rounded-md shadow-sm">
+                    {[3, 4, 5].map((cnt) => (
+                      <ActionButton
+                        key={cnt}
+                        size="sm"
+                        variant={cprCount === cnt ? "primary" : "outline"}
+                        onClick={() => handleCprChange(cnt as CprCount)}
+                        disabled={isSettingCpr || isSaving}
+                        className="first:rounded-r-none last:rounded-l-none first:border-r-0 last:border-l-0"
+                      >
+                        {cnt} Rounds
+                      </ActionButton>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Sequential Stages List */}
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50 px-6 py-4 flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-900">
-              Ordered Event Pipeline ({events.length} Total Stages)
-            </h3>
-            <span className="text-xs text-slate-500">Reorder stages using ↑ and ↓ buttons</span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {events.map((stg, idx) => (
-              <div
-                key={stg.id}
-                className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 font-mono text-sm font-extrabold text-indigo-700 border border-indigo-200">
-                    {stg.sequenceIndex}
+            {/* Sequential Stages List */}
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              <div className="border-b border-slate-100 bg-slate-50 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Ordered Event Pipeline ({events.length} Total Stages)
+                  </h3>
+                  {dirty && <Badge variant="warning">Unsaved changes</Badge>}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">
+                    Reorder, rename, then save to persist.
                   </span>
-                  <div>
-                    <p className="font-bold text-sm text-slate-900">{stg.name}</p>
-                    <p className="text-xs text-slate-500 font-mono">slug: {stg.slug}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <Badge variant={stg.reviewType === "ASYNC_MULTI_REVIEWER" ? "purple" : "default"}>
-                    {stg.reviewType === "ASYNC_MULTI_REVIEWER" ? "Async (3 Reviewers)" : "Live Panel"}
-                  </Badge>
-
-                  <Badge variant={stg.status === "SUBMISSION_OPEN" ? "info" : "default"}>
-                    {stg.status}
-                  </Badge>
-
-                  <div className="flex items-center gap-1">
-                    <ActionButton
-                      size="sm"
-                      variant="outline"
-                      disabled={idx === 0}
-                      onClick={() => moveUp(idx)}
-                      title="Move stage earlier in sequence"
-                    >
-                      ↑
-                    </ActionButton>
-                    <ActionButton
-                      size="sm"
-                      variant="outline"
-                      disabled={idx === events.length - 1}
-                      onClick={() => moveDown(idx)}
-                      title="Move stage later in sequence"
-                    >
-                      ↓
-                    </ActionButton>
-                    <ActionButton
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleRemoveEvent(stg.id, stg.name)}
-                      title="Remove stage from pipeline"
-                    >
-                      ✕
-                    </ActionButton>
-                  </div>
+                  <ActionButton
+                    size="sm"
+                    isLoading={isSaving}
+                    disabled={!dirty || !editionId || isSettingCpr}
+                    onClick={savePipeline}
+                  >
+                    Save Pipeline Changes
+                  </ActionButton>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* Add Stage Modal */}
-      <Modal
-        isOpen={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        title="Add Event Stage to Pipeline"
-        description="Insert an additional review gate or presentation event."
-      >
-        <div className="space-y-4">
-          <Input
-            label="Event Title"
-            placeholder="e.g. Midterm Poster Session"
-            value={newEventName}
-            onChange={(e) => setNewEventName(e.target.value)}
-          />
-          <Select
-            label="Review Modality"
-            value={newEventModality}
-            onChange={(e) => setNewEventModality(e.target.value as any)}
-            options={[
-              { value: "LIVE_PANEL", label: "Live Panel Evaluation" },
-              { value: "ASYNC_MULTI_REVIEWER", label: "Asynchronous 3-Reviewer Review" },
-            ]}
-          />
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setAddModalOpen(false)}>
-              Cancel
-            </Button>
-            <ActionButton onClick={handleAddEvent}>Add Stage</ActionButton>
-          </div>
-        </div>
-      </Modal>
+              {events.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <p className="text-sm font-semibold text-slate-700">No stages configured for this edition.</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Configure Continuous Project Review depth above, or clone a prior edition to seed the pipeline.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {events.map((stg, idx) => (
+                    <div
+                      key={stg.id}
+                      className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 font-mono text-sm font-extrabold text-indigo-700 border border-indigo-200">
+                          {stg.sequenceIndex}
+                        </span>
+                        <div>
+                          <input
+                            value={stg.name}
+                            onChange={(e) => handleRename(stg.id, e.target.value)}
+                            disabled={isReadOnly || isSaving}
+                            aria-label={`Rename stage ${stg.slug}`}
+                            className="block w-full max-w-[18rem] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-bold text-slate-900 hover:border-slate-200 focus:border-indigo-300 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                          />
+                          <p className="text-xs text-slate-500 font-mono">slug: {stg.slug}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <Badge variant={stg.reviewType === "ASYNC_MULTI_REVIEWER" ? "purple" : "default"}>
+                          {stg.reviewType === "ASYNC_MULTI_REVIEWER" ? "Async (3 Reviewers)" : "Live Panel"}
+                        </Badge>
+
+                        <Badge variant={stg.status === "SUBMISSION_OPEN" ? "info" : "default"}>
+                          {stg.status}
+                        </Badge>
+
+                        <div className="flex items-center gap-1">
+                          <ActionButton
+                            size="sm"
+                            variant="outline"
+                            disabled={idx === 0 || isSaving || isSettingCpr}
+                            onClick={() => applyMove(idx, -1)}
+                            title="Move stage earlier in sequence"
+                          >
+                            ↑
+                          </ActionButton>
+                          <ActionButton
+                            size="sm"
+                            variant="outline"
+                            disabled={idx === events.length - 1 || isSaving || isSettingCpr}
+                            onClick={() => applyMove(idx, 1)}
+                            title="Move stage later in sequence"
+                          >
+                            ↓
+                          </ActionButton>
+                          <ActionButton
+                            size="sm"
+                            variant="danger"
+                            disabled
+                            title="Individual stage deletion is not supported — stage count is configured via Continuous Reviews (3–5) and edition cloning"
+                          >
+                            ✕
+                          </ActionButton>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Clone Edition Modal */}
       <Modal
@@ -283,26 +479,36 @@ export default function EventsConfigPage() {
         <div className="space-y-4">
           <Select
             label="Template Edition"
+            value={templateSlug}
+            onChange={(e) => setTemplateSlug(e.target.value)}
             options={[
-              { value: "ht26", label: "HackTrack 2026 (7 stages, 3 CPR rounds)" },
-              { value: "ht25", label: "HackTrack 2025 (8 stages, 4 CPR rounds)" },
+              { value: "ht25", label: "HackTrack 2025 (ht25)" },
+              { value: "ht26", label: "HackTrack 2026 (ht26)" },
             ]}
           />
-          <Input label="New Edition Title" placeholder="HackTrack 2027" defaultValue="HackTrack 2027" />
-          <Input label="New Edition Slug" placeholder="ht27" defaultValue="ht27" />
+          <Input
+            label="New Edition Title"
+            placeholder="HackTrack 2027"
+            value={cloneName}
+            onChange={(e) => setCloneName(e.target.value)}
+          />
+          <Input
+            label="New Edition Slug"
+            placeholder="ht27"
+            value={cloneSlug}
+            onChange={(e) => setCloneSlug(e.target.value)}
+          />
+          <Input
+            label="Academic Year"
+            placeholder="2026-2027"
+            value={cloneAcademicYear}
+            onChange={(e) => setCloneAcademicYear(e.target.value)}
+          />
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <Button variant="outline" onClick={() => setCloneModalOpen(false)}>
               Cancel
             </Button>
-            <ActionButton
-              onClick={() => {
-                setCloneModalOpen(false);
-                setFeedback({
-                  type: "success",
-                  msg: "Successfully cloned template into HackTrack 2027 workspace.",
-                });
-              }}
-            >
+            <ActionButton onClick={handleClone} isLoading={isCloning}>
               Confirm Cloning
             </ActionButton>
           </div>

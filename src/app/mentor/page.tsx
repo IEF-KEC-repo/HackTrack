@@ -1,125 +1,171 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 import { Input } from "@/components/ui/Input";
 
+type TeamHealth = "GREEN" | "YELLOW" | "RED";
+type CheckInCadenceStatus = "ON_TRACK" | "CHECKIN_DUE" | "CHECKIN_OVERDUE";
+
+interface EditionSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface MentorContext {
+  mentorId: string;
+  edition: EditionSummary;
+}
+
+interface MentorTeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface MentorMilestone {
+  id: string;
+  title: string;
+  description?: string | null;
+  dueDate: string;
+  source?: string;
+  status: string;
+  isOverdue: boolean;
+  isDueSoon?: boolean;
+  daysOverdue?: number;
+  evidenceType?: string | null;
+  evidenceUrl?: string | null;
+  evidenceNotes?: string | null;
+}
+
+interface MentorCheckInRecord {
+  id: string;
+  teamId: string;
+  mentorId?: string | null;
+  meetingDate: string;
+  health: TeamHealth;
+  notes?: string | null;
+  actionItems?: string | null;
+  progressNotes?: string | null;
+  blockers?: string | null;
+  nextGoals?: string | null;
+  evidenceUrl?: string | null;
+  submittedByRole?: string;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TeamArtifact {
+  id: string;
+  fileType: string;
+  originalName: string;
+  storedName: string;
+  fileUrl: string;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  createdAt: string;
+}
+
 interface MentoredTeam {
   id: string;
   regCode: string;
   name: string;
-  track: string;
+  track?: string | null;
   status: string;
-  currentHealth: "GREEN" | "YELLOW" | "RED";
+  currentHealth: TeamHealth;
   progress: {
     mandatoryTotal: number;
     mandatoryCompleted: number;
     mandatoryProgressPercent: number;
+    customTotal: number;
+    customCompleted: number;
+    totalCompleted: number;
+    totalMilestones: number;
+    overallProgressPercent: number;
   };
   overdueCount: number;
-  members: Array<{ id: string; name: string; email: string; role: string }>;
+  members: MentorTeamMember[];
   cadence: {
     daysSinceLastCheckIn: number | null;
-    status: "ON_TRACK" | "CHECKIN_DUE" | "CHECKIN_OVERDUE";
+    status: CheckInCadenceStatus;
+    isOverdue: boolean;
+    daysOverdue: number;
+    daysRemaining: number;
     message: string;
   };
-  latestCheckIn?: {
-    meetingDate: string;
-    health: "GREEN" | "YELLOW" | "RED";
-    notes?: string;
-    actionItems?: string;
-    progressNotes?: string;
-    blockers?: string;
-  };
-  milestones: Array<{
-    id: string;
-    title: string;
-    status: string;
-    dueDate: string;
-    isOverdue: boolean;
-    evidenceType?: string;
-    evidenceUrl?: string;
-    evidenceNotes?: string;
-  }>;
+  latestCheckIn?: MentorCheckInRecord | null;
+  milestones: MentorMilestone[];
+  checkIns: MentorCheckInRecord[];
+  artifacts: TeamArtifact[];
 }
 
-export default function MentorCockpitPage() {
-  const [mentor] = useState({
-    name: "Prof. Alan Turing",
-    email: "mentor@hacktrack.edu",
-    role: "MENTOR",
-  });
+interface MentorTeamsResponse {
+  edition: EditionSummary;
+  mentorId: string;
+  teams: MentoredTeam[];
+  count: number;
+}
 
-  // Strictly isolated list of teams assigned to this mentor
-  const [assignedTeams, setAssignedTeams] = useState<MentoredTeam[]>([
-    {
-      id: "t_quantum",
-      regCode: "HT26-T001",
-      name: "QuantumForge",
-      track: "AI/ML & Edge Computing",
-      status: "SUBMITTED",
-      currentHealth: "GREEN",
-      progress: {
-        mandatoryTotal: 4,
-        mandatoryCompleted: 1,
-        mandatoryProgressPercent: 25.0,
-      },
-      overdueCount: 1,
-      members: [
-        { id: "u_lead", name: "Priya Sharma", email: "lead@hacktrack.edu", role: "LEAD" },
-        { id: "u_mem", name: "Liam O'Connor", email: "member@hacktrack.edu", role: "MEMBER" },
-      ],
-      cadence: {
-        daysSinceLastCheckIn: 12,
-        status: "CHECKIN_DUE",
-        message: "Next check-in due soon (in 2 days).",
-      },
-      latestCheckIn: {
-        meetingDate: new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString(),
-        health: "GREEN",
-        progressNotes: "Finalized quantization algorithms and submitted Ideathon slides deck.",
-        blockers: "Waiting on supplier quotes for edge FPGA chipsets.",
-        notes: "Solid conceptual grounding. Connect with Prof. Shannon for lab equipment.",
-        actionItems: "Submit KiCad schematics before Friday.",
-      },
-      milestones: [
-        {
-          id: "m_1",
-          title: "Problem Statement & Persona Validation Survey",
-          status: "COMPLETED",
-          dueDate: "2026-08-15",
-          isOverdue: false,
-          evidenceType: "LINK",
-          evidenceUrl: "https://docs.google.com/forms/d/1BxiMVs0XRA5nFMdKvBdBZjgm/analytics",
-          evidenceNotes: "Survey completed across 14 embedded robotics researchers.",
-        },
-        {
-          id: "m_2",
-          title: "Detailed Architecture Diagram & Hardware BOM Draft",
-          status: "IN_PROGRESS",
-          dueDate: "2026-08-20",
-          isOverdue: true,
-          evidenceNotes: "Drafting schematic in KiCad.",
-        },
-      ],
-    },
-  ]);
+const isTeamHealth = (value: string): value is TeamHealth =>
+  value === "GREEN" || value === "YELLOW" || value === "RED";
+
+export default function MentorCockpitPage() {
+  // Remote data: GET /api/mentor/teams?edition=ht26
+  const [mentorContext, setMentorContext] = useState<MentorContext | null>(null);
+  const [assignedTeams, setAssignedTeams] = useState<MentoredTeam[]>([]);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(true);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
 
   // Log Check-In Modal State
   const [selectedTeam, setSelectedTeam] = useState<MentoredTeam | null>(null);
   const [checkInNotes, setCheckInNotes] = useState("");
   const [checkInActionItems, setCheckInActionItems] = useState("");
-  const [checkInHealth, setCheckInHealth] = useState<"GREEN" | "YELLOW" | "RED">("GREEN");
+  const [checkInHealth, setCheckInHealth] = useState<TeamHealth>("GREEN");
   const [checkInMeetingDate, setCheckInMeetingDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
 
   // Inspector Modal State
   const [inspectTeam, setInspectTeam] = useState<MentoredTeam | null>(null);
+
+  const loadTeams = useCallback(async () => {
+    setIsLoadingTeams(true);
+    setTeamsError(null);
+    try {
+      const res = await fetch("/api/mentor/teams?edition=ht26", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as Partial<MentorTeamsResponse> & {
+        error?: string;
+      };
+
+      if (!res.ok || data.error) {
+        setTeamsError(data.error || "Failed to load your assigned teams.");
+        return;
+      }
+
+      setMentorContext({
+        mentorId: data.mentorId ?? "",
+        edition: data.edition ?? { id: "", name: "HackTrack", slug: "ht26" },
+      });
+      setAssignedTeams(data.teams ?? []);
+    } catch {
+      setTeamsError("Could not reach the mentor teams service. Please try again.");
+    } finally {
+      setIsLoadingTeams(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTeams();
+  }, [loadTeams]);
 
   const handleOpenCheckInModal = (team: MentoredTeam) => {
     setSelectedTeam(team);
@@ -127,41 +173,53 @@ export default function MentorCockpitPage() {
     setCheckInNotes("");
     setCheckInActionItems("");
     setCheckInMeetingDate(new Date().toISOString().split("T")[0]);
+    setCheckInError(null);
   };
 
-  const handleSaveCheckIn = (e: React.FormEvent) => {
+  const closeCheckInModal = () => {
+    setSelectedTeam(null);
+    setCheckInError(null);
+  };
+
+  const handleSaveCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTeam || !checkInNotes) return;
+    if (!selectedTeam || !checkInNotes.trim()) return;
 
     setIsSubmittingLog(true);
+    setCheckInError(null);
 
-    const updatedTeams = assignedTeams.map((t) => {
-      if (t.id === selectedTeam.id) {
-        return {
-          ...t,
-          currentHealth: checkInHealth,
-          cadence: {
-            daysSinceLastCheckIn: 0,
-            status: "ON_TRACK" as const,
-            message: "Check-in on track. Next review in 14 days.",
-          },
-          latestCheckIn: {
-            meetingDate: new Date(checkInMeetingDate).toISOString(),
-            health: checkInHealth,
-            notes: checkInNotes,
-            actionItems: checkInActionItems,
-            progressNotes: t.latestCheckIn?.progressNotes,
-            blockers: t.latestCheckIn?.blockers,
-          },
-        };
+    try {
+      const res = await fetch("/api/mentor/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: selectedTeam.id,
+          notes: checkInNotes,
+          actionItems: checkInActionItems || undefined,
+          health: checkInHealth,
+          meetingDate: checkInMeetingDate,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+
+      if (!res.ok || !data.success) {
+        setCheckInError(data.error || "Failed to save the check-in record.");
+        return;
       }
-      return t;
-    });
 
-    setAssignedTeams(updatedTeams);
-    setIsSubmittingLog(false);
-    setSelectedTeam(null);
+      setSelectedTeam(null);
+      setCheckInNotes("");
+      setCheckInActionItems("");
+      // Refetch so health/cadence reflect the newly logged check-in.
+      await loadTeams();
+    } catch {
+      setCheckInError("Could not reach the check-in service. Please try again.");
+    } finally {
+      setIsSubmittingLog(false);
+    }
   };
+
+  const hasTeamsData = !isLoadingTeams && !teamsError;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
@@ -172,7 +230,9 @@ export default function MentorCockpitPage() {
             <span className="rounded bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 border border-amber-200">
               Mentor Guidance Cockpit
             </span>
-            <span className="text-xs text-slate-500 font-medium">Logged in as {mentor.name}</span>
+            <span className="text-xs text-slate-500 font-medium">
+              Logged in as {mentorContext ? `Mentor (${mentorContext.edition.name})` : "Mentor"}
+            </span>
           </div>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Assigned Teams & CPR Guidance</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -194,7 +254,7 @@ export default function MentorCockpitPage() {
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Assigned Teams
           </span>
-          <p className="text-3xl font-black text-slate-900">{assignedTeams.length}</p>
+          <p className="text-3xl font-black text-slate-900">{hasTeamsData ? assignedTeams.length : "–"}</p>
           <p className="text-xs text-slate-400">Teams assigned to you for CPR rounds.</p>
         </div>
 
@@ -202,17 +262,23 @@ export default function MentorCockpitPage() {
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Health Distribution
           </span>
-          <div className="flex items-center gap-4 text-xs font-semibold pt-1">
-            <span className="text-emerald-700">
-              ● {assignedTeams.filter((t) => t.currentHealth === "GREEN").length} Green
-            </span>
-            <span className="text-amber-700">
-              ▲ {assignedTeams.filter((t) => t.currentHealth === "YELLOW").length} Yellow
-            </span>
-            <span className="text-rose-700">
-              ■ {assignedTeams.filter((t) => t.currentHealth === "RED").length} Red
-            </span>
-          </div>
+          {hasTeamsData ? (
+            <div className="flex items-center gap-4 text-xs font-semibold pt-1">
+              <span className="text-emerald-700">
+                ● {assignedTeams.filter((t) => t.currentHealth === "GREEN").length} Green
+              </span>
+              <span className="text-amber-700">
+                ▲ {assignedTeams.filter((t) => t.currentHealth === "YELLOW").length} Yellow
+              </span>
+              <span className="text-rose-700">
+                ■ {assignedTeams.filter((t) => t.currentHealth === "RED").length} Red
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 pt-1">
+              {isLoadingTeams ? "Loading health distribution…" : "Health data unavailable."}
+            </p>
+          )}
           <p className="text-xs text-slate-400">Red health alerts Coordinator for escalation.</p>
         </div>
 
@@ -221,7 +287,7 @@ export default function MentorCockpitPage() {
             Deliverable Alerts
           </span>
           <p className="text-3xl font-black text-rose-600">
-            {assignedTeams.reduce((acc, t) => acc + t.overdueCount, 0)}
+            {hasTeamsData ? assignedTeams.reduce((acc, t) => acc + t.overdueCount, 0) : "–"}
           </p>
           <p className="text-xs text-slate-400">Total overdue items across your teams.</p>
         </div>
@@ -236,10 +302,22 @@ export default function MentorCockpitPage() {
               Teams under your guidance for the active Continuous Project Review (CPR) cycle.
             </p>
           </div>
-          <span className="text-xs font-mono text-slate-400">{assignedTeams.length} team(s)</span>
+          <span className="text-xs font-mono text-slate-400">
+            {isLoadingTeams ? "Loading…" : `${assignedTeams.length} team(s)`}
+          </span>
         </div>
 
-        {assignedTeams.length === 0 ? (
+        {isLoadingTeams ? (
+          <div className="p-8 text-center text-slate-500 text-xs">
+            Loading your assigned teams…
+          </div>
+        ) : teamsError ? (
+          <div className="p-6">
+            <Alert variant="error" title="Unable to load assigned teams">
+              {teamsError}
+            </Alert>
+          </div>
+        ) : assignedTeams.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-xs">
             No teams are currently assigned to you for mentorship. Event coordinators handle team-to-mentor pairings.
           </div>
@@ -359,10 +437,16 @@ export default function MentorCockpitPage() {
       {/* Modal: Log Check-In */}
       <Modal
         isOpen={!!selectedTeam}
-        onClose={() => setSelectedTeam(null)}
+        onClose={closeCheckInModal}
         title={`Log Meeting Check-In: ${selectedTeam?.name} (${selectedTeam?.regCode})`}
       >
         <form onSubmit={handleSaveCheckIn} className="space-y-4">
+          {checkInError && (
+            <Alert variant="error" title="Check-in could not be saved">
+              {checkInError}
+            </Alert>
+          )}
+
           <Input
             label="Meeting Date"
             type="date"
@@ -377,7 +461,9 @@ export default function MentorCockpitPage() {
             </label>
             <select
               value={checkInHealth}
-              onChange={(e) => setCheckInHealth(e.target.value as any)}
+              onChange={(e) => {
+                if (isTeamHealth(e.target.value)) setCheckInHealth(e.target.value);
+              }}
               className="w-full rounded-md border border-slate-300 p-2 text-xs focus:ring-1 focus:ring-indigo-600 font-medium"
             >
               <option value="GREEN">🟢 Green — On Track (Healthy progress towards CPR gate)</option>
@@ -414,7 +500,7 @@ export default function MentorCockpitPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-3">
-            <Button variant="outline" type="button" onClick={() => setSelectedTeam(null)}>
+            <Button variant="outline" type="button" onClick={closeCheckInModal}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmittingLog}>
@@ -431,28 +517,34 @@ export default function MentorCockpitPage() {
         title={`Deliverables: ${inspectTeam?.name} (${inspectTeam?.regCode})`}
       >
         <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-          {inspectTeam?.milestones.map((m) => (
-            <div key={m.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-slate-900">{m.title}</span>
-                <Badge variant={m.status === "COMPLETED" ? "success" : m.isOverdue ? "danger" : "default"}>
-                  {m.status}
-                </Badge>
-              </div>
-              <p className="text-[11px] text-slate-500">Due: {m.dueDate}</p>
-              {m.evidenceUrl && (
-                <p className="text-xs text-indigo-700 break-all">
-                  🔗 Evidence Link:{" "}
-                  <a href={m.evidenceUrl} target="_blank" rel="noreferrer" className="underline">
-                    {m.evidenceUrl}
-                  </a>
-                </p>
-              )}
-              {m.evidenceNotes && (
-                <p className="text-xs text-slate-600 italic">Notes: {m.evidenceNotes}</p>
-              )}
+          {inspectTeam?.milestones.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-500">
+              No milestones have been recorded for this team yet.
             </div>
-          ))}
+          ) : (
+            inspectTeam?.milestones.map((m) => (
+              <div key={m.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs text-slate-900">{m.title}</span>
+                  <Badge variant={m.status === "COMPLETED" ? "success" : m.isOverdue ? "danger" : "default"}>
+                    {m.status}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-500">Due: {m.dueDate}</p>
+                {m.evidenceUrl && (
+                  <p className="text-xs text-indigo-700 break-all">
+                    🔗 Evidence Link:{" "}
+                    <a href={m.evidenceUrl} target="_blank" rel="noreferrer" className="underline">
+                      {m.evidenceUrl}
+                    </a>
+                  </p>
+                )}
+                {m.evidenceNotes && (
+                  <p className="text-xs text-slate-600 italic">Notes: {m.evidenceNotes}</p>
+                )}
+              </div>
+            ))
+          )}
           <div className="flex justify-end pt-2">
             <Button variant="outline" onClick={() => setInspectTeam(null)}>
               Close

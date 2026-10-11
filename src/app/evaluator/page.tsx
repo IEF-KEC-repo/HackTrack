@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/ui/Alert";
 import { Modal } from "@/components/ui/Modal";
-import { calculateWeightedRubricScore } from "@/lib/services/scoring-service";
+import {
+  calculateWeightedRubricScore,
+  type RubricCriterionItem,
+} from "@/lib/services/scoring-service";
 
 interface QueueItem {
   id: string;
@@ -15,227 +18,334 @@ interface QueueItem {
   track: string;
   problemStatement: string;
   solutionAbstract: string;
-  embedSlidesUrl: string;
-  slidesUrl: string;
-  status: "DRAFT" | "SUBMITTED";
-  rawTotalScore: number | null;
+  embedSlidesUrl: string | null;
+  slidesUrl: string | null;
+  eventName: string;
+  eventSlug: string;
   isCalibration: boolean;
-  isOutlierReview?: boolean;
+  isOutlierReview: boolean;
+  scheduledSlotStart: string | null;
+  scheduledSlotEnd: string | null;
+  roomOrMeetingUrl: string | null;
+  status: string;
+  rawTotalScore: number | null;
+  submittedAt: string | null;
+  reopenedAt: string | null;
+  reopenReason: string | null;
 }
 
-interface CriterionItem {
+type RubricCriterion = RubricCriterionItem & {
+  description?: string;
+  sequenceOrder?: number;
+};
+
+interface WorkspaceResponse {
+  evaluation: {
+    id: string;
+    status: string;
+    rawTotalScore: number | null;
+    generalFeedback: string | null;
+    submittedAt: string | null;
+    isCalibration: boolean;
+    isOutlierReview: boolean;
+    scheduledSlotStart: string | null;
+    scheduledSlotEnd: string | null;
+    roomOrMeetingUrl: string | null;
+    reopenedAt: string | null;
+    reopenReason: string | null;
+  };
+  team: {
+    id: string;
+    regCode: string;
+    name: string;
+    track: string;
+    problemStatement: string;
+    solutionAbstract: string;
+    slidesUrl: string | null;
+    embedSlidesUrl: string | null;
+    members: Array<{ name: string; role: string }>;
+    artifacts: unknown[];
+  };
+  rubric: { id: string; criteria: RubricCriterion[] } | null;
+  existingScores: Record<string, number>;
+  existingFeedback: Record<string, string>;
+}
+
+interface EvaluatorIdentity {
   id: string;
-  title: string;
-  description: string;
-  maxPoints: number;
-  weightPercentage: number;
-  anchors: Array<{ level: number; label: string; description: string }>;
+  name: string;
+  email: string;
+  globalRole?: string;
+  editionId?: string;
+  editionRole?: string;
+}
+
+function formatCountdown(endIso: string | null): string | null {
+  if (!endIso) return null;
+  const diff = new Date(endIso).getTime() - Date.now();
+  if (Number.isNaN(diff)) return null;
+  if (diff <= 0) return "Evaluation window closed";
+  const d = Math.floor(diff / 86_400_000);
+  const h = Math.floor((diff % 86_400_000) / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  return `${d}d ${h}h ${m}m`;
 }
 
 export default function EvaluatorCockpitPage() {
-  // Evaluator Profile
-  const [evaluator] = useState({
-    name: "Alex Rivera",
-    email: "evaluator@hacktrack.edu",
-    role: "EVALUATOR",
-  });
+  // Evaluator Identity (real session profile)
+  const [me, setMe] = useState<EvaluatorIdentity | null>(null);
+  const [meError, setMeError] = useState<string | null>(null);
 
   // View Mode: Queue Dashboard vs Split-Screen Cockpit
   const [viewMode, setViewMode] = useState<"queue" | "cockpit">("queue");
 
-  // Assigned Queue State
-  const [queue, setQueue] = useState<QueueItem[]>([
-    {
-      id: "ev_1",
-      teamId: "t_1",
-      teamCode: "HT26-T001",
-      teamName: "QuantumForge",
-      track: "AI/ML & Edge Computing",
-      problemStatement:
-        "Cloud AI inference incurs severe bandwidth bottlenecks and latency spikes in remote robotics systems.",
-      solutionAbstract:
-        "Neuromorphic micro-controller architecture with quantized INT4 weight caching, cutting inference power by 85%.",
-      slidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing",
-      embedSlidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-      status: "DRAFT",
-      rawTotalScore: 70.0,
-      isCalibration: false,
-    },
-    {
-      id: "ev_2",
-      teamId: "t_2",
-      teamCode: "HT26-T002",
-      teamName: "BioSynth AI",
-      track: "Healthtech & Bio",
-      problemStatement:
-        "Antibiotic resistance is compounding due to slow discovery pipelines for novel peptide sequences.",
-      solutionAbstract:
-        "Transformer-based de novo antimicrobial peptide generator paired with fast wet-lab screening protocols.",
-      slidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing",
-      embedSlidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-      status: "DRAFT",
-      rawTotalScore: null,
-      isCalibration: false,
-    },
-    {
-      id: "ev_cal_1",
-      teamId: "t_anchor",
-      teamCode: "ANCHOR-01",
-      teamName: "SolarGrid Nexus (Calibration Sample)",
-      track: "Clean Energy & IoT",
-      problemStatement: "Solar mini-grids experience frequent phase imbalances leading to inverter burnout.",
-      solutionAbstract: "Decentralized edge phase balancing relay using real-time frequency modulation.",
-      slidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing",
-      embedSlidesUrl:
-        "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-      status: "SUBMITTED",
-      rawTotalScore: 82.0,
-      isCalibration: true,
-    },
-  ]);
+  // Assigned Queue State (real evaluations)
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
-  const [activeQueueId, setActiveQueueId] = useState<string>("ev_1");
-  const activeItem = queue.find((q) => q.id === activeQueueId) || queue[0];
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
 
-  // Rubric Criteria with Level 1-5 Scale Anchors
-  const [criteria] = useState<CriterionItem[]>([
-    {
-      id: "crit_1",
-      title: "1. Problem Relevance & Societal Impact",
-      description: "Clarity of problem definition, domain research, and collegiate/industry impact.",
-      maxPoints: 25.0,
-      weightPercentage: 25.0,
-      anchors: [
-        { level: 1, label: "Rudimentary", description: "Vague problem statement without validated customer pain." },
-        { level: 3, label: "Demonstrated", description: "Well-researched with relevant data and target audience identified." },
-        { level: 5, label: "Exceptional", description: "Profound societal or industrial need with field interview metrics." },
-      ],
-    },
-    {
-      id: "crit_2",
-      title: "2. Technical Feasibility & Architecture",
-      description: "Soundness of proposed system architecture, tech stack selection, and hardware/software viability.",
-      maxPoints: 30.0,
-      weightPercentage: 30.0,
-      anchors: [
-        { level: 1, label: "Unviable", description: "Ignores real-world constraints or relies on magic box tech." },
-        { level: 3, label: "Viable MVP", description: "Realistic tech stack and component block diagram for CPR 1." },
-        { level: 5, label: "Production-Ready", description: "Rigorous latency budgets, BOM, and risk mitigation strategies." },
-      ],
-    },
-    {
-      id: "crit_3",
-      title: "3. Innovation & Originality",
-      description: "Novelty of approach compared to existing market solutions and standard open-source tools.",
-      maxPoints: 25.0,
-      weightPercentage: 25.0,
-      anchors: [
-        { level: 1, label: "Derivative", description: "Direct clone of existing tutorial or commercial software." },
-        { level: 3, label: "Clever Application", description: "Applies existing technology in a novel vertical with clear differentiation." },
-        { level: 5, label: "Breakthrough", description: "Unique IP, algorithmic innovation, or paradigm shift." },
-      ],
-    },
-    {
-      id: "crit_4",
-      title: "4. Presentation & Deck Quality",
-      description: "Clarity, structure, data visualizations, and professional delivery of the Google Slides deck.",
-      maxPoints: 20.0,
-      weightPercentage: 20.0,
-      anchors: [
-        { level: 1, label: "Unclear", description: "Cluttered slides with missing context or broken links." },
-        { level: 3, label: "Polished", description: "Clean slide structure with clear problem-to-solution narrative." },
-        { level: 5, label: "Compelling", description: "Executive-grade delivery with pristine graphics and benchmarks." },
-      ],
-    },
-  ]);
+  // Active evaluation workspace state
+  const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
-  // Scores State for active evaluation
-  const [scores, setScores] = useState<Record<string, number>>({
-    crit_1: 18,
-    crit_2: 21,
-    crit_3: 17,
-    crit_4: 14,
-  });
-
-  const [criterionFeedback, setCriterionFeedback] = useState<Record<string, string>>({
-    crit_1: "Good problem context; validate deployment costs.",
-    crit_2: "INT4 quantization is technically sound for edge microcontrollers.",
-  });
-
-  const [generalFeedback, setGeneralFeedback] = useState(
-    "Solid algorithmic kernel. Ensure you stress test thermal throttling before the CPR 1 live panel."
-  );
+  // Scores State for active evaluation (hydrated from server)
+  const [scores, setScores] = useState<Record<string, number>>({});
+  const [criterionFeedback, setCriterionFeedback] = useState<Record<string, string>>({});
+  const [generalFeedback, setGeneralFeedback] = useState("");
 
   // Status & UI States
-  const [saveStatus, setSaveStatus] = useState<string>("Draft auto-saved locally");
+  const [saveStatus, setSaveStatus] = useState("");
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isCoiModalOpen, setIsCoiModalOpen] = useState(false);
   const [coiTargetItem, setCoiTargetItem] = useState<QueueItem | null>(null);
   const [coiReason, setCoiReason] = useState("");
   const [slideLoadError, setSlideLoadError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Calculation
+  // Last persisted draft payload (prevents redundant auto-saves after hydration)
+  const lastSavedRef = useRef<string>("");
+
+  const activeItem = queue.find((q) => q.id === activeQueueId) ?? queue[0] ?? null;
+
+  // Load the assigned queue from the real evaluator endpoint
+  const loadQueue = useCallback(async () => {
+    setQueueLoading(true);
+    setQueueError(null);
+    try {
+      const res = await fetch("/api/evaluator/scoring/queue");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load your assigned queue");
+      const items: QueueItem[] = json.queue || [];
+      setQueue(items);
+      setActiveQueueId((prev) =>
+        prev && items.some((q) => q.id === prev) ? prev : items[0]?.id ?? null
+      );
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : "Failed to load your assigned queue");
+    } finally {
+      setQueueLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) throw new Error("Unable to load your evaluator profile");
+        const json = await res.json();
+        if (active) {
+          setMe(json.user || null);
+          setMeError(null);
+        }
+      } catch (err) {
+        // Identity is cosmetic; queue access is enforced server-side.
+        if (active) {
+          setMeError(
+            err instanceof Error ? err.message : "Unable to load your evaluator profile"
+          );
+        }
+      }
+    })();
+    loadQueue();
+    return () => {
+      active = false;
+    };
+  }, [loadQueue]);
+
+  // Load the workspace (rubric + existing scores/feedback) when a review opens
+  useEffect(() => {
+    if (viewMode !== "cockpit" || !activeQueueId) return;
+    let active = true;
+    setWorkspaceLoading(true);
+    setWorkspaceError(null);
+    setSlideLoadError(false);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/evaluator/scoring/workspace?evaluationId=${encodeURIComponent(activeQueueId)}`
+        );
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to load the evaluation workspace");
+        if (!active) return;
+        const nextScores = json.existingScores || {};
+        const nextFeedback = json.existingFeedback || {};
+        const nextGeneral = json.evaluation?.generalFeedback || "";
+        setWorkspace(json);
+        setScores(nextScores);
+        setCriterionFeedback(nextFeedback);
+        setGeneralFeedback(nextGeneral);
+        lastSavedRef.current = JSON.stringify({
+          scores: nextScores,
+          criterionFeedback: nextFeedback,
+          generalFeedback: nextGeneral,
+        });
+        setSaveStatus("Draft loaded");
+      } catch (err) {
+        if (active) {
+          setWorkspaceError(
+            err instanceof Error ? err.message : "Failed to load the evaluation workspace"
+          );
+        }
+      } finally {
+        if (active) setWorkspaceLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [viewMode, activeQueueId]);
+
+  // Debounced auto-save of the current draft (real persistence)
+  useEffect(() => {
+    if (viewMode !== "cockpit" || !activeItem) return;
+    if (activeItem.status === "SUBMITTED" || workspaceLoading) return;
+
+    const payload = JSON.stringify({ scores, criterionFeedback, generalFeedback });
+    if (!activeItem.id || payload === lastSavedRef.current) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        setSaveStatus("Saving...");
+        const res = await fetch("/api/evaluator/scoring/draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            evaluationId: activeItem.id,
+            scores,
+            criterionFeedback,
+            generalFeedback,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Draft save failed");
+        lastSavedRef.current = payload;
+        setSaveStatus("Draft auto-saved");
+      } catch (err) {
+        setSaveStatus(err instanceof Error ? err.message : "Draft save failed");
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [scores, criterionFeedback, generalFeedback, viewMode, activeItem, workspaceLoading]);
+
+  const criteria: RubricCriterion[] = workspace?.rubric?.criteria ?? [];
   const rubricCalc = calculateWeightedRubricScore(criteria, scores);
   const isLocked = activeItem?.status === "SUBMITTED";
+
+  const completedCount = queue.filter((q) => q.status === "SUBMITTED").length;
+  const progressPercent =
+    queue.length > 0 ? Math.round((completedCount / queue.length) * 100) : 100;
+
+  const countdown = formatCountdown(activeItem?.scheduledSlotEnd ?? null);
 
   // Anchor click handler
   const handleAnchorClick = (criterionId: string, maxPoints: number, level: number) => {
     if (isLocked) return;
     const ratio = level / 5;
     const computedScore = Math.round(maxPoints * ratio * 10) / 10;
-    setScores({ ...scores, [criterionId]: computedScore });
-    setSaveStatus("Saving...");
-    setTimeout(() => setSaveStatus("Draft auto-saved"), 400);
+    setScores((prev) => ({ ...prev, [criterionId]: computedScore }));
   };
 
   const handleScoreChange = (criterionId: string, val: number) => {
     if (isLocked) return;
-    setScores({ ...scores, [criterionId]: val });
-    setSaveStatus("Saving...");
-    setTimeout(() => setSaveStatus("Draft auto-saved"), 400);
+    setScores((prev) => ({ ...prev, [criterionId]: val }));
   };
 
-  // Submit Final Evaluation
-  const handleConfirmSubmit = () => {
-    if (generalFeedback.trim().length < 20) return;
-
-    const updatedQueue = queue.map((q) =>
-      q.id === activeItem.id
-        ? { ...q, status: "SUBMITTED" as const, rawTotalScore: rubricCalc.totalScore }
-        : q
-    );
-
-    setQueue(updatedQueue);
-    setIsSubmitModalOpen(false);
-    setSaveStatus("Evaluation finalized & locked");
+  const handleCriterionFeedbackChange = (criterionId: string, val: string) => {
+    if (isLocked) return;
+    setCriterionFeedback((prev) => ({ ...prev, [criterionId]: val }));
   };
 
-  // Declare Conflict of Interest
-  const handleDeclareCoi = (e: React.FormEvent) => {
-    e.preventDefault();
-    const target = coiTargetItem || activeItem;
-    const remaining = queue.filter((q) => q.id !== target.id);
-    setQueue(remaining);
-    setIsCoiModalOpen(false);
-    setCoiReason("");
-    setCoiTargetItem(null);
-    if (remaining.length > 0) {
-      setActiveQueueId(remaining[0].id);
+  // Submit Final Evaluation (real lock)
+  const handleConfirmSubmit = async () => {
+    if (!activeItem) return;
+    if (generalFeedback.trim().length < 20) {
+      setSaveStatus("Comprehensive feedback must be at least 20 characters");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/evaluator/scoring/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          evaluationId: activeItem.id,
+          scores,
+          criterionFeedback,
+          generalFeedback,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to submit evaluation");
+      lastSavedRef.current = JSON.stringify({ scores, criterionFeedback, generalFeedback });
+      setIsSubmitModalOpen(false);
+      setSaveStatus("Evaluation finalized & locked");
+      await loadQueue();
+    } catch (err) {
+      setSaveStatus(err instanceof Error ? err.message : "Failed to submit evaluation");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const completedCount = queue.filter((q) => q.status === "SUBMITTED").length;
-  const progressPercent = queue.length > 0 ? Math.round((completedCount / queue.length) * 100) : 100;
+  // Declare Conflict of Interest (real recusal)
+  const handleDeclareCoi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = coiTargetItem || activeItem;
+    if (!target || !coiReason.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/evaluator/scoring/declare-coi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editionId: me?.editionId || "ht26",
+          teamId: target.teamId,
+          reason: coiReason,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to declare conflict of interest");
+      setIsCoiModalOpen(false);
+      setCoiReason("");
+      setCoiTargetItem(null);
+      setSaveStatus("Conflict declared — review recused");
+      await loadQueue();
+    } catch (err) {
+      setSaveStatus(err instanceof Error ? err.message : "Failed to declare conflict of interest");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // --------------------------------------------------------------------------
   // QUEUE DASHBOARD VIEW (Role-specific Queue Overview, Progress & Countdown)
   // --------------------------------------------------------------------------
-  if (viewMode === "queue") {
+  if (viewMode === "queue" || !activeItem) {
     return (
       <div className="min-h-screen bg-slate-50 pb-16">
         {/* Top Header */}
@@ -246,13 +356,17 @@ export default function EvaluatorCockpitPage() {
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
                   <span>Evaluator Queue Portal</span>
                   <span>•</span>
-                  <span>Ideathon Double-Blind Evaluation</span>
+                  <span>{queue[0]?.eventName || "Assigned Review Stage"}</span>
                 </div>
                 <h1 className="mt-1 text-2xl font-extrabold text-slate-900 sm:text-3xl">
-                  Welcome back, {evaluator.name}
+                  Welcome back, {me?.name || "Evaluator"}
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">
-                  {evaluator.email} • Assigned reviews are calibrated with automated Z-score standardization.
+                <p className={`mt-1 text-sm ${meError ? "text-rose-600" : "text-slate-500"}`}>
+                  {meError
+                    ? meError
+                    : me
+                      ? `${me.email} • Assigned reviews are calibrated with automated Z-score standardization.`
+                      : "Loading evaluator profile…"}
                 </p>
               </div>
 
@@ -262,7 +376,9 @@ export default function EvaluatorCockpitPage() {
                   <span className="text-base">⏳</span>
                   <div>
                     <span className="block text-[10px] uppercase font-bold text-amber-700">Deadline Countdown</span>
-                    <span>Evaluation Window Closes In: 2d 14h 32m</span>
+                    <span>
+                      {countdown ? `Evaluation Window Closes In: ${countdown}` : "No evaluation window scheduled"}
+                    </span>
                   </div>
                 </div>
 
@@ -282,13 +398,22 @@ export default function EvaluatorCockpitPage() {
         </div>
 
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+          {queueError && (
+            <Alert variant="error" title="Unable to load your assigned queue">
+              {queueError}{" "}
+              <button type="button" className="underline font-semibold" onClick={() => loadQueue()}>
+                Retry
+              </button>
+            </Alert>
+          )}
+
           {/* Progress Overview Banner */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">Queue Completion</span>
                 <h2 className="text-2xl font-black text-slate-900 mt-1">
-                  {completedCount} of {queue.length} Reviews Finalized ({progressPercent}%)
+                  {queueLoading ? "Loading…" : `${completedCount} of ${queue.length} Reviews Finalized (${progressPercent}%)`}
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Complete all assigned evaluations before the deadline for cohort normalization.
@@ -330,103 +455,116 @@ export default function EvaluatorCockpitPage() {
                 </p>
               </div>
               <Badge variant="purple" size="sm">
-                Ideathon Stage
+                {queue[0]?.eventName || "Assigned Stage"}
               </Badge>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="py-3.5 px-4">Team Code</th>
-                    <th className="py-3.5 px-4">Idea / Team Name</th>
-                    <th className="py-3.5 px-4">Track</th>
-                    <th className="py-3.5 px-4">Presentation Deck</th>
-                    <th className="py-3.5 px-4">Review Status</th>
-                    <th className="py-3.5 px-4">Raw Score</th>
-                    <th className="py-3.5 px-4 text-right">Quick Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {queue.map((item) => {
-                    const isItemLocked = item.status === "SUBMITTED";
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-4 px-4 font-mono font-bold text-indigo-700">
-                          {item.teamCode}
-                        </td>
-                        <td className="py-4 px-4 font-semibold text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <span>{item.teamName}</span>
-                            {item.isCalibration && (
-                              <Badge variant="purple" size="sm">Anchor</Badge>
+            {queueLoading ? (
+              <div className="p-10 text-center text-sm text-slate-500">Loading your assigned reviews…</div>
+            ) : queue.length === 0 ? (
+              <div className="p-10 text-center text-sm text-slate-500">
+                <p className="font-semibold text-slate-700">No evaluations assigned yet.</p>
+                <p className="mt-1 text-xs">A coordinator must allocate reviews for the active stage before they appear here.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3.5 px-4">Team Code</th>
+                      <th className="py-3.5 px-4">Idea / Team Name</th>
+                      <th className="py-3.5 px-4">Track</th>
+                      <th className="py-3.5 px-4">Presentation Deck</th>
+                      <th className="py-3.5 px-4">Review Status</th>
+                      <th className="py-3.5 px-4">Raw Score</th>
+                      <th className="py-3.5 px-4 text-right">Quick Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {queue.map((item) => {
+                      const isItemLocked = item.status === "SUBMITTED";
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-4 px-4 font-mono font-bold text-indigo-700">
+                            {item.teamCode}
+                          </td>
+                          <td className="py-4 px-4 font-semibold text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span>{item.teamName}</span>
+                              {item.isCalibration && (
+                                <Badge variant="purple" size="sm">Anchor</Badge>
+                              )}
+                              {item.isOutlierReview && (
+                                <Badge variant="danger" size="sm">Adjudication</Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-normal truncate max-w-xs mt-0.5">
+                              {item.problemStatement}
+                            </p>
+                          </td>
+                          <td className="py-4 px-4 text-slate-600">{item.track}</td>
+                          <td className="py-4 px-4">
+                            {item.slidesUrl ? (
+                              <a
+                                href={item.slidesUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline font-medium inline-flex items-center gap-1"
+                              >
+                                <span>Google Slides</span> ↗
+                              </a>
+                            ) : (
+                              <span className="text-slate-400">No deck</span>
                             )}
-                            {item.isOutlierReview && (
-                              <Badge variant="danger" size="sm">Adjudication</Badge>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-500 font-normal truncate max-w-xs mt-0.5">
-                            {item.problemStatement}
-                          </p>
-                        </td>
-                        <td className="py-4 px-4 text-slate-600">{item.track}</td>
-                        <td className="py-4 px-4">
-                          <a
-                            href={item.slidesUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-indigo-600 hover:underline font-medium inline-flex items-center gap-1"
-                          >
-                            <span>Google Slides</span> ↗
-                          </a>
-                        </td>
-                        <td className="py-4 px-4">
-                          <Badge
-                            variant={isItemLocked ? "success" : "warning"}
-                            size="sm"
-                          >
-                            {isItemLocked ? "✓ Submitted" : "✎ Draft In-Progress"}
-                          </Badge>
-                        </td>
-                        <td className="py-4 px-4 font-mono font-bold">
-                          {item.rawTotalScore !== null ? (
-                            <span className="text-slate-900">{item.rawTotalScore.toFixed(1)} / 100</span>
-                          ) : (
-                            <span className="text-slate-400 font-normal">Pending</span>
-                          )}
-                        </td>
-                        <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
-                          {!isItemLocked && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCoiTargetItem(item);
-                                setIsCoiModalOpen(true);
-                              }}
-                              className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1 rounded hover:bg-rose-50"
-                              title="Declare conflict of interest"
+                          </td>
+                          <td className="py-4 px-4">
+                            <Badge
+                              variant={isItemLocked ? "success" : "warning"}
+                              size="sm"
                             >
-                              ⚖️ COI
-                            </button>
-                          )}
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => {
-                              setActiveQueueId(item.id);
-                              setViewMode("cockpit");
-                            }}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                          >
-                            {isItemLocked ? "View Submission" : "Launch Cockpit 🎯"}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {isItemLocked ? "✓ Submitted" : "✎ Draft In-Progress"}
+                            </Badge>
+                          </td>
+                          <td className="py-4 px-4 font-mono font-bold">
+                            {item.rawTotalScore !== null ? (
+                              <span className="text-slate-900">{item.rawTotalScore.toFixed(1)} / 100</span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">Pending</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
+                            {!isItemLocked && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCoiTargetItem(item);
+                                  setIsCoiModalOpen(true);
+                                }}
+                                className="text-xs text-rose-600 hover:text-rose-800 font-medium px-2 py-1 rounded hover:bg-rose-50"
+                                title="Declare conflict of interest"
+                              >
+                                ⚖️ COI
+                              </button>
+                            )}
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                setActiveQueueId(item.id);
+                                setViewMode("cockpit");
+                              }}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                              {isItemLocked ? "View Submission" : "Launch Cockpit 🎯"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
@@ -437,12 +575,12 @@ export default function EvaluatorCockpitPage() {
             setIsCoiModalOpen(false);
             setCoiTargetItem(null);
           }}
-          title={`Declare Conflict of Interest: ${(coiTargetItem || activeItem)?.teamCode}`}
+          title={`Declare Conflict of Interest: ${(coiTargetItem || activeItem)?.teamCode || "Team"}`}
         >
           <form onSubmit={handleDeclareCoi} className="space-y-4 text-xs">
             <p className="text-slate-600">
               Declare a conflict if you have a personal relationship, academic co-authorship, direct mentorship, or departmental affiliation with any member of{" "}
-              <strong>{(coiTargetItem || activeItem)?.teamName}</strong>.
+              <strong>{(coiTargetItem || activeItem)?.teamName || "this team"}</strong>.
             </p>
 
             <div>
@@ -474,8 +612,8 @@ export default function EvaluatorCockpitPage() {
               >
                 Cancel
               </Button>
-              <Button variant="danger" type="submit" disabled={!coiReason.trim()}>
-                Recuse & Reassign Review
+              <Button variant="danger" type="submit" disabled={!coiReason.trim() || isSubmitting}>
+                {isSubmitting ? "Recording…" : "Recuse & Reassign Review"}
               </Button>
             </div>
           </form>
@@ -552,14 +690,16 @@ export default function EvaluatorCockpitPage() {
                 </button>
               )}
 
-              <a
-                href={activeItem.slidesUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 px-2 py-1 rounded flex items-center gap-1"
-              >
-                Open External ↗
-              </a>
+              {activeItem.slidesUrl && (
+                <a
+                  href={activeItem.slidesUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 px-2 py-1 rounded flex items-center gap-1"
+                >
+                  Open External ↗
+                </a>
+              )}
             </div>
           </div>
 
@@ -575,7 +715,25 @@ export default function EvaluatorCockpitPage() {
 
           {/* Sandboxed Google Slides Presentation Deck */}
           <div className="flex-1 w-full relative min-h-[300px] rounded-lg overflow-hidden border border-slate-800 bg-black flex items-center justify-center">
-            {slideLoadError ? (
+            {!activeItem.embedSlidesUrl ? (
+              <div className="text-center p-6 space-y-3">
+                <span className="text-3xl">📄</span>
+                <p className="text-sm font-semibold text-slate-300">No embedded presentation deck available.</p>
+                <p className="text-xs text-slate-400 max-w-md">
+                  This team has not submitted a Google Slides deck that can be embedded for review.
+                </p>
+                {activeItem.slidesUrl && (
+                  <a
+                    href={activeItem.slidesUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
+                  >
+                    Attempt Direct Open in Google Docs ↗
+                  </a>
+                )}
+              </div>
+            ) : slideLoadError ? (
               <div className="text-center p-6 space-y-3">
                 <span className="text-3xl">⚠️</span>
                 <p className="text-sm font-semibold text-rose-400">Unable to load embedded Google Slides deck.</p>
@@ -583,7 +741,7 @@ export default function EvaluatorCockpitPage() {
                   The deck link may not have public view permissions (&quot;Anyone with the link can view&quot;) or was removed.
                 </p>
                 <a
-                  href={activeItem.slidesUrl}
+                  href={activeItem.slidesUrl || "#"}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-block rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
@@ -622,7 +780,7 @@ export default function EvaluatorCockpitPage() {
             <div className="flex items-center gap-2 flex-1 mr-2">
               <span className="font-semibold text-slate-500">Queue:</span>
               <select
-                value={activeQueueId}
+                value={activeQueueId ?? ""}
                 onChange={(e) => setActiveQueueId(e.target.value)}
                 className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 flex-1 truncate"
               >
@@ -650,13 +808,21 @@ export default function EvaluatorCockpitPage() {
             </div>
           )}
 
+          {workspaceError && (
+            <div className="p-4">
+              <Alert variant="error" title="Unable to load evaluation workspace">
+                {workspaceError}
+              </Alert>
+            </div>
+          )}
+
           {/* Scrollable Rubric Form */}
           <div className="p-6 overflow-y-auto space-y-6 flex-1">
             {/* Rubric Header with Running Weighted Score */}
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Weighted Ideathon Rubric</h2>
-                <p className="text-xs text-slate-500">Reviewer 1 of 3 (Standardized Z-Score Normalization)</p>
+                <h2 className="text-base font-bold text-slate-900">{workspace?.rubric ? "Weighted Ideathon Rubric" : "Evaluation Rubric"}</h2>
+                <p className="text-xs text-slate-500">Double-Blind Panel Review (Standardized Z-Score Normalization)</p>
               </div>
               <div className="text-right">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
@@ -666,112 +832,123 @@ export default function EvaluatorCockpitPage() {
               </div>
             </div>
 
-            {/* Criteria Cards */}
-            <form className="space-y-6">
-              {criteria.map((c) => {
-                const currentScore = scores[c.id] ?? 0;
-                return (
-                  <div key={c.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                    <div className="flex items-baseline justify-between">
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-900">{c.title}</h3>
-                        <p className="text-[11px] text-slate-500">{c.description}</p>
-                      </div>
-                      <span className="font-mono text-sm font-extrabold text-indigo-600 whitespace-nowrap ml-2">
-                        {currentScore} / {c.maxPoints}
-                      </span>
-                    </div>
-
-                    {/* Level 1-5 Scale Anchor Pills */}
-                    <div className="flex gap-1.5 pt-1">
-                      {c.anchors.map((anchor) => (
-                        <button
-                          key={anchor.level}
-                          type="button"
-                          disabled={isLocked}
-                          onClick={() => handleAnchorClick(c.id, c.maxPoints, anchor.level)}
-                          className={`flex-1 py-1.5 px-2 rounded text-[11px] border text-center transition-colors ${
-                            currentScore >= (c.maxPoints * anchor.level) / 5 - 1 &&
-                            currentScore <= (c.maxPoints * anchor.level) / 5 + 1
-                              ? "bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm"
-                              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                          } ${isLocked ? "cursor-not-allowed opacity-75" : ""}`}
-                          title={anchor.description}
-                        >
-                          <span className="block font-bold">L{anchor.level}</span>
-                          <span className="text-[9px] block truncate">{anchor.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Fine Score Slider */}
-                    <div className="flex items-center gap-3 pt-2">
-                      <input
-                        type="range"
-                        min="0"
-                        max={c.maxPoints}
-                        step="0.5"
-                        disabled={isLocked}
-                        value={currentScore}
-                        onChange={(e) => handleScoreChange(c.id, parseFloat(e.target.value))}
-                        className="w-full accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max={c.maxPoints}
-                        step="0.5"
-                        disabled={isLocked}
-                        value={currentScore}
-                        onChange={(e) => handleScoreChange(c.id, parseFloat(e.target.value) || 0)}
-                        className="w-16 rounded border border-slate-300 px-2 py-1 text-xs font-mono font-bold text-center disabled:bg-slate-100"
-                      />
-                    </div>
-
-                    {/* Criterion Specific Written Feedback */}
-                    <div className="pt-2">
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Specific Criterion Notes / Actionable Suggestions:
-                      </label>
-                      <input
-                        type="text"
-                        disabled={isLocked}
-                        placeholder="e.g., Explain trade-offs in compute vs precision..."
-                        value={criterionFeedback[c.id] || ""}
-                        onChange={(e) =>
-                          setCriterionFeedback({ ...criterionFeedback, [c.id]: e.target.value })
-                        }
-                        className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* General Written Feedback (Mandatory min 20 chars) */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-                <div className="flex justify-between items-baseline">
-                  <label className="text-xs font-bold text-slate-900">
-                    Comprehensive Qualitative Feedback (Mandatory)
-                  </label>
-                  <span
-                    className={`text-[11px] font-mono ${
-                      generalFeedback.trim().length >= 20 ? "text-emerald-600" : "text-amber-600 font-semibold"
-                    }`}
-                  >
-                    {generalFeedback.trim().length} / 20 chars min
-                  </span>
-                </div>
-                <textarea
-                  rows={4}
-                  disabled={isLocked}
-                  placeholder="Provide constructive guidance, identifying potential pitfalls, testing advice, and architectural recommendations for upcoming Continuous Project Reviews..."
-                  value={generalFeedback}
-                  onChange={(e) => setGeneralFeedback(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 p-2.5 text-xs focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100"
-                />
+            {workspaceLoading ? (
+              <p className="text-sm text-slate-500">Loading rubric &amp; existing scores…</p>
+            ) : criteria.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                No scoring rubric is configured for this event yet.
               </div>
-            </form>
+            ) : (
+              /* Criteria Cards */
+              <form className="space-y-6">
+                {criteria.map((c) => {
+                  const currentScore = scores[c.id] ?? 0;
+                  return (
+                    <div key={c.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-900">{c.title || "Criterion"}</h3>
+                          <p className="text-[11px] text-slate-500">{c.description}</p>
+                        </div>
+                        <span className="font-mono text-sm font-extrabold text-indigo-600 whitespace-nowrap ml-2">
+                          {currentScore} / {c.maxPoints}
+                        </span>
+                      </div>
+
+                      {/* Level 1-5 Scale Anchor Pills */}
+                      <div className="flex gap-1.5 pt-1">
+                        {[1, 2, 3, 4, 5].map((level) => {
+                          const target = Math.round((c.maxPoints * level) / 5 * 10) / 10;
+                          const isActiveBand =
+                            currentScore >= (c.maxPoints * level) / 5 - 1 &&
+                            currentScore <= (c.maxPoints * level) / 5 + 1;
+                          return (
+                            <button
+                              key={level}
+                              type="button"
+                              disabled={isLocked}
+                              onClick={() => handleAnchorClick(c.id, c.maxPoints, level)}
+                              className={`flex-1 py-1.5 px-2 rounded text-[11px] border text-center transition-colors ${
+                                isActiveBand
+                                  ? "bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm"
+                                  : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                              } ${isLocked ? "cursor-not-allowed opacity-75" : ""}`}
+                              title={`${target} of ${c.maxPoints} points`}
+                            >
+                              <span className="block font-bold">L{level}</span>
+                              <span className="text-[9px] block truncate">{target} pts</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Fine Score Slider */}
+                      <div className="flex items-center gap-3 pt-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max={c.maxPoints}
+                          step="0.5"
+                          disabled={isLocked}
+                          value={currentScore}
+                          onChange={(e) => handleScoreChange(c.id, parseFloat(e.target.value))}
+                          className="w-full accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={c.maxPoints}
+                          step="0.5"
+                          disabled={isLocked}
+                          value={currentScore}
+                          onChange={(e) => handleScoreChange(c.id, parseFloat(e.target.value) || 0)}
+                          className="w-16 rounded border border-slate-300 px-2 py-1 text-xs font-mono font-bold text-center disabled:bg-slate-100"
+                        />
+                      </div>
+
+                      {/* Criterion Specific Written Feedback */}
+                      <div className="pt-2">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Specific Criterion Notes / Actionable Suggestions:
+                        </label>
+                        <input
+                          type="text"
+                          disabled={isLocked}
+                          placeholder="e.g., Explain trade-offs in compute vs precision..."
+                          value={criterionFeedback[c.id] || ""}
+                          onChange={(e) => handleCriterionFeedbackChange(c.id, e.target.value)}
+                          className="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* General Written Feedback (Mandatory min 20 chars) */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+                  <div className="flex justify-between items-baseline">
+                    <label className="text-xs font-bold text-slate-900">
+                      Comprehensive Qualitative Feedback (Mandatory)
+                    </label>
+                    <span
+                      className={`text-[11px] font-mono ${
+                        generalFeedback.trim().length >= 20 ? "text-emerald-600" : "text-amber-600 font-semibold"
+                      }`}
+                    >
+                      {generalFeedback.trim().length} / 20 chars min
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    disabled={isLocked}
+                    placeholder="Provide constructive guidance, identifying potential pitfalls, testing advice, and architectural recommendations for upcoming Continuous Project Reviews..."
+                    value={generalFeedback}
+                    onChange={(e) => setGeneralFeedback(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 p-2.5 text-xs focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100"
+                  />
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Cockpit Action Footer */}
@@ -789,7 +966,7 @@ export default function EvaluatorCockpitPage() {
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={generalFeedback.trim().length < 20}
+                  disabled={generalFeedback.trim().length < 20 || criteria.length === 0}
                   onClick={() => setIsSubmitModalOpen(true)}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 >
@@ -821,7 +998,7 @@ export default function EvaluatorCockpitPage() {
             <span className="text-xs uppercase font-bold text-indigo-700">Raw Composite Score</span>
             <p className="text-3xl font-black text-indigo-900 mt-1">{rubricCalc.totalScore} / 100</p>
             <p className="text-[11px] text-indigo-700 mt-1">
-              Will be standard-normalized against cohort baseline (Mean 70, StdDev 15) to eliminate evaluator bias.
+              Will be standardized (Z-score normalization) against the cohort baseline during coordinator normalization to eliminate evaluator bias.
             </p>
           </div>
 
@@ -830,11 +1007,16 @@ export default function EvaluatorCockpitPage() {
           </p>
 
           <div className="flex justify-end gap-3 pt-3">
-            <Button variant="secondary" onClick={() => setIsSubmitModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setIsSubmitModalOpen(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmSubmit} className="bg-indigo-600 text-white">
-              Confirm & Lock Evaluation
+            <Button
+              variant="primary"
+              onClick={handleConfirmSubmit}
+              disabled={isSubmitting}
+              className="bg-indigo-600 text-white"
+            >
+              {isSubmitting ? "Submitting…" : "Confirm & Lock Evaluation"}
             </Button>
           </div>
         </div>
@@ -847,12 +1029,12 @@ export default function EvaluatorCockpitPage() {
           setIsCoiModalOpen(false);
           setCoiTargetItem(null);
         }}
-        title={`Declare Conflict of Interest: ${(coiTargetItem || activeItem)?.teamCode}`}
+        title={`Declare Conflict of Interest: ${(coiTargetItem || activeItem)?.teamCode || "Team"}`}
       >
         <form onSubmit={handleDeclareCoi} className="space-y-4 text-xs">
           <p className="text-slate-600">
             Declare a conflict if you have a personal relationship, academic co-authorship, direct mentorship, or departmental affiliation with any member of{" "}
-            <strong>{(coiTargetItem || activeItem)?.teamName}</strong>.
+            <strong>{(coiTargetItem || activeItem)?.teamName || "this team"}</strong>.
           </p>
 
           <div>
@@ -884,8 +1066,8 @@ export default function EvaluatorCockpitPage() {
             >
               Cancel
             </Button>
-            <Button variant="danger" type="submit" disabled={!coiReason.trim()}>
-              Recuse & Reassign Review
+            <Button variant="danger" type="submit" disabled={!coiReason.trim() || isSubmitting}>
+              {isSubmitting ? "Recording…" : "Recuse & Reassign Review"}
             </Button>
           </div>
         </form>
