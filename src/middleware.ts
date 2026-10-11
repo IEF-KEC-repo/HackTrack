@@ -128,8 +128,9 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip Next internals and static files served from /public (e.g. /logos/*.png)
-    // so assets are returned directly instead of hitting the auth gate below.
-    "/((?!_next/static|_next/image|favicon.ico|logos/).*)",
+    // Skip Next internals and any static file served from /public (images,
+    // fonts, etc. — e.g. /Mascot.png, /logos/*.png) so assets are returned
+    // directly instead of hitting the auth gate below.
+    "/((?!_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|webp|avif|ico|bmp|txt|xml|webmanifest|woff2?|ttf|otf|eot|css|js|map)$).*)",
   ],
 };
