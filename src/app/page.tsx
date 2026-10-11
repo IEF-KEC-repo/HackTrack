@@ -92,6 +92,14 @@ function statusTone(status: string): string {
   return "bg-slate-50 text-slate-600 ring-slate-200";
 }
 
+// Event states in which new teams may still register. Kept in sync with the
+// server-side gate in src/lib/services/registration-service.ts.
+const REGISTRATION_OPEN_EVENT_STATUSES = [
+  "UPCOMING",
+  "REGISTRATION_OPEN",
+  "SUBMISSION_OPEN",
+];
+
 // ------------------------------------------------------------
 // Organizers — IEF@KEC team (two tiers: faculty + students)
 // ------------------------------------------------------------
@@ -224,6 +232,11 @@ export default function HomePage() {
   const editionLine = edition
     ? `${edition.name} (${edition.slug})`
     : "Live Edition";
+  const firstEvent = events[0] ?? null;
+  const registrationOpen =
+    !!edition &&
+    !!firstEvent &&
+    REGISTRATION_OPEN_EVENT_STATUSES.includes(firstEvent.status);
 
   return (
     <div className="flex min-h-full flex-col bg-white">
@@ -362,18 +375,17 @@ export default function HomePage() {
 
                 <div className="mt-9 flex flex-wrap items-center gap-4">
                   <a
-                    href="/auth/login"
+                    href={registrationOpen ? "/auth/register/team" : "#about"}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   >
-                    Access the Portal
+                    {registrationOpen ? "Register Your Team" : "Learn More"}
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </a>
                   <a
-                    href="#pipeline"
+                    href="/auth/login"
                     className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
                   >
-                    <GitBranch className="h-4 w-4" aria-hidden="true" />
-                    View the Pipeline
+                    Access the Portal
                   </a>
                 </div>
 

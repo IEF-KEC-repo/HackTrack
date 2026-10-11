@@ -9,6 +9,11 @@ import {
   verifySessionToken,
 } from "@/lib/auth";
 import { getAuthorizedRedirect } from "@/lib/permissions";
+import {
+  registerTeamLead,
+  validateTeamLeadRegistration,
+  RegistrationError,
+} from "@/lib/services/registration-service";
 import crypto from "crypto";
 
 export async function POST(
@@ -203,7 +208,52 @@ export async function POST(
     }
 
     // ----------------------------------------------------
-    // 3. FORGOT PASSWORD (Generate Reset Token)
+    // 3. PUBLIC TEAM-LEAD SELF-REGISTRATION (no invite token)
+    // ----------------------------------------------------
+    if (action === "register-team") {
+      const body = await req.json();
+      const { teamName, name, email, password } = body;
+
+      const validation = validateTeamLeadRegistration({
+        teamName,
+        name,
+        email,
+        password,
+      });
+
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+
+      const result = await registerTeamLead({ teamName, name, email, password });
+
+      const token = await signSessionToken({
+        userId: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        globalRole: result.user.globalRole,
+        editionId: result.editionId,
+        editionRole: result.user.editionRole,
+      });
+
+      const response = NextResponse.json({
+        success: true,
+        user: {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          editionRole: result.user.editionRole,
+        },
+        team: result.team,
+        redirectUrl: result.redirectUrl,
+      });
+
+      response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
+      return response;
+    }
+
+    // ----------------------------------------------------
+    // 4. FORGOT PASSWORD (Generate Reset Token)
     // ----------------------------------------------------
     if (action === "forgot-password") {
       const { email } = await req.json();
@@ -285,6 +335,9 @@ export async function POST(
 
     return NextResponse.json({ error: "Action not recognized" }, { status: 404 });
   } catch (error: any) {
+    if (error instanceof RegistrationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error(`Auth Error [${action}]:`, error);
     return NextResponse.json(
       { error: "Internal server error", details: error.message },
