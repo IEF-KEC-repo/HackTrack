@@ -12,7 +12,7 @@
 Unlike rigid off-the-shelf hackathon platforms, HackTrack provides:
 - Complete **Edition Isolation & Pipeline Configurability** (stages can be reordered, added, or weighted per annual cycle).
 - **Dynamic Multi-Reviewer Scoring & Normalization** to mitigate evaluator bias across large cohorts.
-- Integrated **Artifact Governance** (embedded Google Slides viewer, automated standardized file renaming using team registration codes).
+- Integrated **Deck Governance** (embedded Google Slides viewer with validated, shareable presentation links).
 - Granular **Role-Based Access Control (RBAC)** distinguishing operational managers (`Coordinator Manage`) from administrative supervisors (`Coordinator View`), evaluators, mentors, and participants.
 
 ---
@@ -21,7 +21,7 @@ Unlike rigid off-the-shelf hackathon platforms, HackTrack provides:
 Running large-scale collegiate innovation programs using fragmented spreadsheets, disconnected Google Forms, manual drive uploads, and ad-hoc communication tools results in:
 1. **Evaluator Variance & Scoring Inconsistency:** Subjective score distributions between lenient and strict reviewers skew Ideathon qualification.
 2. **Operational Bottlenecks for Organizers:** Managing 300+ teams, assigning 3+ reviewers per idea, and tracking rolling check-ins across multiple rounds consumes hundreds of coordinator hours.
-3. **Artifact Disorganization:** Broken deck links, unauthorized file modifications after deadlines, and missing team registration identifiers hinder panel reviews.
+3. **Deck Disorganization:** Broken deck links and unauthorized modifications after deadlines hinder panel reviews.
 4. **Lack of Year-Over-Year Continuity:** Custom software built for one year is typically abandoned, requiring reinvention each academic cycle.
 
 ---
@@ -29,7 +29,7 @@ Running large-scale collegiate innovation programs using fragmented spreadsheets
 ## 3. Goals & Success Metrics
 
 ### 3.1 Business & Academic Goals
-- **Single Source of Truth:** Unify team registration, milestone tracking, artifact submission, mentor check-ins, evaluation scoring, and stage promotions into one platform.
+- **Single Source of Truth:** Unify team registration, milestone tracking, deck submission, mentor check-ins, evaluation scoring, and stage promotions into one platform.
 - **Year-Over-Year Reusability:** Spin up a new edition (e.g., `HackTrack 2026`, `HackTrack 2027`) in under 10 minutes without code modification or database resets.
 - **Fair & Auditable Progression:** Eliminate evaluator bias via algorithmic normalization and maintain an immutable audit trail for every gate promotion decision.
 
@@ -39,8 +39,8 @@ Running large-scale collegiate innovation programs using fragmented spreadsheets
 | **System Scale** | Concurrent active users during submission deadlines | 1,000+ participants (~300 teams) | APM load monitoring, p95 latency < 500ms |
 | **Operational Efficiency** | Time spent assigning reviewers to 300 teams | Reduced from 12 hours to < 30 seconds | Automated round-robin balancing job |
 | **Evaluation Integrity** | Inter-evaluator scoring drift reduction | > 80% reduction in variance post-normalization | Standard deviation analysis across normalized cohort scores |
-| **Artifact Compliance** | Presentations rendered seamlessly without permission issues | 99.5% successful iframe embed rate | Client-side error telemetry on Google Slides embeds |
-| **Submission Reliability** | Failed uploads or corrupted team registration tags | 0% failure rate; 100% files prefixed with `REG_CODE` | Server-side upload verification checks |
+| **Deck Compliance** | Presentations rendered seamlessly without permission issues | 99.5% successful iframe embed rate | Client-side error telemetry on Google Slides embeds |
+| **Submission Reliability** | Validated deck links at evaluation time | 100% links validated on save | Link validation on team save |
 
 ---
 
@@ -88,9 +88,8 @@ HackTrack serves six primary personas across the collegiate ecosystem:
    - Team registration (1 to 6 members, solo allowed).
    - Auto-generation of unique, collision-proof Registration Codes (e.g., `HT26-T042`).
    - Team Lead delegation, invite link generation, member approval.
-4. **Artifact Management:**
+4. **Deck Management:**
    - Single Google Slides shareable link validation and automatic conversion to embeddable URL.
-   - Secondary file attachments (PDFs, ZIPs, schematics) uploaded and automatically renamed server-side to `{REG_CODE}_{ORIGINAL_FILENAME}`.
 5. **Dynamic Rubric & Scoring Engine:**
    - Weighted scoring rubrics customizable per event.
    - 3-Reviewer assignment engine for Ideathon with balanced distribution.
@@ -113,5 +112,4 @@ HackTrack serves six primary personas across the collegiate ecosystem:
 ## 6. Assumptions & Dependencies
 - **Institutional Identity:** Email domain restriction (e.g., `@college.edu`) can be enforced via Auth.js, with optional guest evaluator credential bypass.
 - **Google Slides Permissions:** Teams are instructed to set Google Slides permissions to *"Anyone with the link can view"*. The system will perform client-side verification to detect inaccessible URLs.
-- **Storage Subsystem:** Local or S3-compatible object storage (e.g., AWS S3, Cloudflare R2, MinIO) for secondary attachments.
 - **Concurrency:** Peak loads will occur during the 2 hours preceding Ideathon submission deadlines and during live Demo Day evaluations.

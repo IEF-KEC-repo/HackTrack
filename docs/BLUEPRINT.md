@@ -99,7 +99,7 @@ Between named events, rolling elements continue: milestones with due dates, fort
 
 **FR-3 Idea registration**
 - **Step 1, at registration (short, to limit reviewer load):** title, one-line pitch, problem (word limit), proposed solution (word limit), track, team, eligibility declarations.
-- **Step 2, unlocked for shortlisted teams:** target users, tech/approach, expected outcome, attachments.
+- **Step 2, unlocked for shortlisted teams:** target users, tech/approach, expected outcome, supporting links.
 - Save draft, submit, edit until deadline, withdraw.
 - Duplicate-title warning; admin can request changes.
 
@@ -109,16 +109,16 @@ Between named events, rolling elements continue: milestones with due dates, fort
 
 **FR-5 Milestones and deliverables**
 - Admin-defined mandatory milestones per event plus team-defined rolling milestones.
-- Fields: title, description, due date, status (Not started / In progress / Done / Blocked), evidence (link or file).
+- Fields: title, description, due date, status (Not started / In progress / Done / Blocked), evidence (external link).
 - Fortnightly check-in form: progress, blockers, help needed.
 - Overdue flags visible to team, mentor and coordinators.
 
-**FR-5b Google Slides deck and other attachments**
+**FR-5b Google Slides deck**
 - Each team has one **Slides link** field: the team pastes a Google Slides URL they've made shareable ("Anyone with the link can view"), set once the team is created and editable any time — one evolving deck reused across every event, not a new upload per event.
 - The app validates the URL is a Slides link and stores it on the team record (not per-event).
 - On every evaluator/reviewer scoring page, the deck renders inline via Slides' embed URL (`.../embed?start=false&loop=false`) in an iframe, next to the scoring form, so the evaluator never has to leave the page.
 - **If the link breaks mid-edition** (permissions changed, deck deleted, wrong URL): the system detects the failed embed, gives the team a grace-period notification (in-app + email, e.g. 48 hours) asking them to fix sharing or the link, and does not block anything else on the team's account during that window. If it's still broken when an evaluator opens the page, they see a clear "can't load — ask the team to enable link sharing" message instead of a blank frame; nothing else about the team's status changes automatically.
-- **Other files** (anything besides the main deck: reports, datasets, extra docs) are uploaded when the coordinator enables uploads for an event. The uploaded file must be named exactly with the team's ID (the ID generated at registration) — the app enforces this by renaming on upload rather than trusting the student's filename, and rejects/flags anything it can't confidently match to a team.
+- The Slides link is the only way a team shares a deck. There is no separate file-attachment/upload path in the product.
 
 **FR-6 Reviews and evaluation**
 - Coordinator (Manage) assigns evaluators to teams per event (manual or auto-balanced) and schedules sessions.
@@ -153,10 +153,9 @@ Between named events, rolling elements continue: milestones with due dates, fort
 - **Membership**(user, edition, role)
 - **Event**(id, edition, name, type [idea-review/continuous-review/poc/demo/custom], order, evaluator_count, open_at, close_at)  ← replaces the old fixed "Stage" concept; an edition's events are cloned from a template and can be renamed/reordered/added/removed
 - **Track**(id, edition, name)
-- **Team**(id, edition, name, team_code [the registration-time ID used for file naming], lead_user, status, slides_url)
+- **Team**(id, edition, name, team_code [the registration-time ID], lead_user, status, slides_url)
 - **TeamMember**(team, user, status)
 - **Idea**(id, team, title, problem, solution, target_users, approach, track, status, submitted_at)
-- **Attachment**(id, team, event, url, file_name [server-generated as `{team_code}_{event}_{original_filename}`], original_filename, type) — for files other than the main Slides deck
 - **Milestone**(id, team, event, title, description, due, status, evidence, created_by)
 - **CheckIn**(id, team, period, progress, blockers, help_needed)
 - **Rubric**(id, event) and **Criterion**(id, rubric, name, weight, scale_min, scale_max, anchors)
@@ -211,7 +210,7 @@ Rules: 3 reviewers per idea at Ideathon (fixed) with **z-score normalization**: 
 
 ## 8. Non-functional requirements
 
-- **Security:** RBAC on every endpoint, hashed passwords, rate limiting, file-type and size checks, no sensitive data in logs. Uploaded files are validated server-side and renamed to the team code — the client-supplied filename is never trusted.
+- **Security:** RBAC on every endpoint, hashed passwords, rate limiting, no sensitive data in logs.
 - **Privacy:** consent notice, data-retention policy, ability to export/delete a user's data.
 - **Performance:** pages under 2 s at 1,500 concurrent users, with spikes at deadlines (registration close, milestone due dates); bulk operations (CSV import, batch assignment, mass email) run as background jobs **(Assumption)**.
 - **Availability:** daily backups, restore tested before launch.
@@ -224,7 +223,7 @@ Rules: 3 reviewers per idea at Ideathon (fixed) with **z-score normalization**: 
 
 ## 9. Suggested stack **(Assumption, swappable)**
 
-Next.js (TypeScript) · PostgreSQL · Prisma · Auth.js (email/password) · Tailwind + shadcn/ui · S3-compatible storage (for non-Slides attachments) · Resend or SES for email · a job queue or cron for reminders · GitHub Actions CI.
+Next.js (TypeScript) · PostgreSQL · Prisma · Auth.js (email/password) · Tailwind + shadcn/ui · Resend or SES for email · a job queue or cron for reminders · GitHub Actions CI.
 
 **Hosting (recommended default, since this wasn't decided):** Vercel (or Railway/Render) for the app plus a managed Postgres add-on (Neon or Supabase). This is the lowest-effort path for a single college running one event a year — no server to patch, scales automatically during deadline spikes, and free/low tiers likely cover 1,000 participants. Swap to the college's own infrastructure later if there's an institutional requirement to keep data on-prem; the Next.js/Postgres stack runs fine on a plain VM too.
 
@@ -270,7 +269,7 @@ Next.js (TypeScript) · PostgreSQL · Prisma · Auth.js (email/password) · Tail
 
 ### Master context (paste at the top of every prompt)
 
-> You are a senior product engineer helping me build a web platform that runs an annual hackathon-style program for one college, reused year to year as different editions. Each edition runs a named sequence of events: Ideathon → Innovatz (idea review) → 3 to 5 Continuous Project Reviews (count set per edition) → POC → Demo Day, with rolling milestones and check-ins between them. The event list is configurable, not hard-coded, so events can be renamed/reordered/added in future editions. Scale: 1,000+ participants per edition (about 300 teams of 1 to 6 members, solo allowed). Roles: Participant (team lead or member), Mentor, Evaluator (Ideathon reviewer or panel evaluator, counts vary per event), Coordinator (View-only — full visibility, no edit rights), Coordinator (Manage — 2 to 3 people who do all CRUD/assignment/decisions for the event), Super Admin. Evaluation uses weighted rubrics with scores and written feedback; Ideathon uses 3 reviewers per idea with per-reviewer score normalization. Each team has one Google Slides deck (a shareable link they paste, not an upload) that must render embedded on every evaluator's scoring page; other files they upload must be renamed by the app to the team's registration code. Stack: Next.js (TypeScript), PostgreSQL, Prisma, Auth.js, Tailwind. Follow the requirements, data model and permission matrix I paste below. Before writing anything, list your assumptions and ask any blocking questions. Then deliver the output in the format requested. Keep code typed, tested and accessible.
+> You are a senior product engineer helping me build a web platform that runs an annual hackathon-style program for one college, reused year to year as different editions. Each edition runs a named sequence of events: Ideathon → Innovatz (idea review) → 3 to 5 Continuous Project Reviews (count set per edition) → POC → Demo Day, with rolling milestones and check-ins between them. The event list is configurable, not hard-coded, so events can be renamed/reordered/added in future editions. Scale: 1,000+ participants per edition (about 300 teams of 1 to 6 members, solo allowed). Roles: Participant (team lead or member), Mentor, Evaluator (Ideathon reviewer or panel evaluator, counts vary per event), Coordinator (View-only — full visibility, no edit rights), Coordinator (Manage — 2 to 3 people who do all CRUD/assignment/decisions for the event), Super Admin. Evaluation uses weighted rubrics with scores and written feedback; Ideathon uses 3 reviewers per idea with per-reviewer score normalization. Each team has one Google Slides deck (a shareable link they paste, not an upload) that must render embedded on every evaluator's scoring page. Stack: Next.js (TypeScript), PostgreSQL, Prisma, Auth.js, Tailwind. Follow the requirements, data model and permission matrix I paste below. Before writing anything, list your assumptions and ask any blocking questions. Then deliver the output in the format requested. Keep code typed, tested and accessible.
 
 ### Phase 0: Discovery and documentation
 
@@ -286,11 +285,11 @@ Next.js (TypeScript) · PostgreSQL · Prisma · Auth.js (email/password) · Tail
 
 ### Phase 3: Idea registration and teams
 
-> [Master context] Implement team creation for 1 to 6 members (solo allowed), a generated team code (used later for file naming), email invitations (accept/decline), team lead rules and one-team-per-edition. Build the two-step idea form from FR-3 (short at Ideathon registration, detailed form unlocked for shortlisted teams) with draft/submit/withdraw, deadline enforcement, duplicate-title warning, and a Coordinator (Manage) request-changes flow. Add the team's Slides-link field (validate it's a Google Slides URL, store it, show a "not shared correctly" warning if the embed fails a load check) per FR-5b. Add the team/idea state machine from section 3. Include participant and coordinator list views with filters and search. Acceptance: a team can go from creation to a submitted idea with a working Slides link, and a Coordinator (Manage) can shortlist or reject in bulk (by top N or percentage) with a note that teams can see.
+> [Master context] Implement team creation for 1 to 6 members (solo allowed), a generated team code (used on the team record), email invitations (accept/decline), team lead rules and one-team-per-edition. Build the two-step idea form from FR-3 (short at Ideathon registration, detailed form unlocked for shortlisted teams) with draft/submit/withdraw, deadline enforcement, duplicate-title warning, and a Coordinator (Manage) request-changes flow. Add the team's Slides-link field (validate it's a Google Slides URL, store it, show a "not shared correctly" warning if the embed fails a load check) per FR-5b. Add the team/idea state machine from section 3. Include participant and coordinator list views with filters and search. Acceptance: a team can go from creation to a submitted idea with a working Slides link, and a Coordinator (Manage) can shortlist or reject in bulk (by top N or percentage) with a note that teams can see.
 
 ### Phase 4: Milestones, deliverables and check-ins
 
-> [Master context] Implement mandatory (Coordinator-defined, per event) and team-defined rolling milestones with due dates, statuses and evidence (link or file). Build the fortnightly check-in form and reminder logic. Implement the "other attachments" upload from FR-5b: when a Coordinator (Manage) enables uploads for an event, students can upload files that the server renames to the team code (never trusting the client-supplied name), with type/size checks. Add overdue detection, team and coordinator progress views, and mentor assignment with mentor notes. Provide a scheduled job for due-soon and overdue flags. Acceptance: progress percentage per team is correct, overdue items are flagged, uploaded files are correctly renamed to the team code regardless of what the student named them, and mentors see only assigned teams.
+> [Master context] Implement mandatory (Coordinator-defined, per event) and team-defined rolling milestones with due dates, statuses and evidence (external link). Build the fortnightly check-in form and reminder logic. Add overdue detection, team and coordinator progress views, and mentor assignment with mentor notes. Provide a scheduled job for due-soon and overdue flags. Acceptance: progress percentage per team is correct, overdue items are flagged, and mentors see only assigned teams.
 
 ### Phase 5: Reviews, scheduling and scoring
 
@@ -306,7 +305,7 @@ Next.js (TypeScript) · PostgreSQL · Prisma · Auth.js (email/password) · Tail
 
 ### Phase 8: Hardening, testing and launch
 
-> [Master context] Prepare for launch: end-to-end tests for the critical journeys of each role (including a full event-by-event journey for one team through Ideathon → Demo Day), load test to the target in section 8, security review (authorization on every endpoint, input validation, uploaded-file renaming, rate limiting), accessibility audit to WCAG 2.1 AA, backup and restore test, monitoring and error tracking. Produce the test plan and UAT scripts, security and privacy checklist, deployment runbook, and user guides for participant, evaluator, and both coordinator tiers. Acceptance: all critical journeys pass, no high-severity findings remain, and a restore from backup is demonstrated.
+> [Master context] Prepare for launch: end-to-end tests for the critical journeys of each role (including a full event-by-event journey for one team through Ideathon → Demo Day), load test to the target in section 8, security review (authorization on every endpoint, input validation, rate limiting), accessibility audit to WCAG 2.1 AA, backup and restore test, monitoring and error tracking. Produce the test plan and UAT scripts, security and privacy checklist, deployment runbook, and user guides for participant, evaluator, and both coordinator tiers. Acceptance: all critical journeys pass, no high-severity findings remain, and a restore from backup is demonstrated.
 
 ---
 

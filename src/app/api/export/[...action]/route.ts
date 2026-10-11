@@ -177,7 +177,6 @@ export async function GET(
           submittedAt: m.completedAt ? m.completedAt.toISOString().slice(0, 10) : null,
           isOverdue: m.isOverdue,
           daysOverdue: overdueDays,
-          evidenceType: m.evidenceType,
           evidenceUrl: m.evidenceUrl,
         };
       });

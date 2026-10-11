@@ -6,11 +6,6 @@ import {
   calculateTeamSizeMetrics,
 } from "./team-service";
 import {
-  generateServerStoredFilename,
-  sanitizeFilename,
-  validateFileUpload,
-} from "./artifact-service";
-import {
   allocateReviewersForEvent,
   CandidateTeam,
   CandidateEvaluator,
@@ -101,19 +96,6 @@ describe("Phase 8: Launch Readiness, End-to-End Journeys, Scale & Security Verif
       const invalidUrl = "https://dropbox.com/s/sample.pdf";
       const invalidValidation = validateGoogleSlidesUrl(invalidUrl);
       expect(invalidValidation.valid).toBe(false);
-    });
-
-    it("renames uploaded deliverable files to include team registration code", () => {
-      const regCode = "HT26-T042";
-      const originalFile = "../../../exploit_payload.pdf";
-
-      const { sanitizedFilename } = sanitizeFilename(originalFile);
-      expect(sanitizedFilename).not.toContain("..");
-      expect(sanitizedFilename).not.toContain("/");
-
-      const serverName = generateServerStoredFilename(regCode, originalFile, 1740000000000);
-      expect(serverName).toBe("HT26-T042_exploit_payload_1740000000000.pdf");
-      expect(serverName.startsWith("HT26-T042_")).toBe(true);
     });
   });
 
@@ -321,17 +303,6 @@ describe("Phase 8: Launch Readiness, End-to-End Journeys, Scale & Security Verif
       expect(blocked.allowed).toBe(false);
       expect(blocked.remaining).toBe(0);
       expect(blocked.resetMs).toBeGreaterThan(0);
-    });
-
-    it("enforces rate limit on file uploads (max 15 req/min)", () => {
-      const ip = "192.168.1.101";
-      const config = RATE_LIMIT_TIERS.UPLOAD;
-
-      for (let i = 0; i < 15; i++) {
-        expect(checkRateLimit(ip, config).allowed).toBe(true);
-      }
-
-      expect(checkRateLimit(ip, config).allowed).toBe(false);
     });
 
     it("verifies public vs protected route boundaries", () => {

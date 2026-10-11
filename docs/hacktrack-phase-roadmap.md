@@ -48,7 +48,7 @@ Once DATABASE_URL/DIRECT_URL are provided:
 
 ## Phase 4 — Final hardening before calling this "the product"
 
-- Security pass: confirm no secrets in repo, confirm magic-byte upload validation and API RBAC are both exercised with real requests (not just unit tests) against the live DB.
+- Security pass: confirm no secrets in repo, confirm API RBAC is exercised with real requests (not just unit tests) against the live DB.
 - Accessibility pass on the new homepage specifically (this is the one surface built this round that hasn't been audited yet).
 - Deployment: stand this up on the recommended hosting (Vercel/Railway + the same Postgres) so there's an actual reachable URL, not just a passing local build.
 

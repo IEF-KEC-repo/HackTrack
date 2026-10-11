@@ -15,7 +15,7 @@
  *     satellite row tied to those teams/users
  *
  * Preserved untouched:
- *   - HT26-T001 (original seed team), its members and its seeded artifact
+ *   - HT26-T001 (original seed team) and its members
  *   - All @hacktrack.edu seed users and their memberships
  *   - The Ideathon deadline (already restored to the seed value)
  *
@@ -181,7 +181,6 @@ async function main() {
             where: { OR: [{ evaluatorId: { in: e2eUserIds } }, { teamId: { in: e2eTeamIds } }] },
           })
         ).count;
-        c.artifact = (await tx.artifact.deleteMany({ where: { teamId: { in: e2eTeamIds } } })).count;
         c.submission = (await tx.submission.deleteMany({ where: { teamId: { in: e2eTeamIds } } })).count;
         c.teamMember = (
           await tx.teamMember.deleteMany({

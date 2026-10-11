@@ -84,13 +84,9 @@ export async function getMentorAssignedTeams(params: {
         },
       },
       teamMilestones: {
-        include: { evidenceFile: true },
         orderBy: { dueDate: "asc" },
       },
       checkIns: {
-        orderBy: { createdAt: "desc" },
-      },
-      artifacts: {
         orderBy: { createdAt: "desc" },
       },
     },
@@ -135,7 +131,6 @@ export async function getMentorAssignedTeams(params: {
       latestCheckIn,
       cadence,
       currentHealth: latestCheckIn?.health || "GREEN",
-      artifacts: team.artifacts,
     };
   });
 }

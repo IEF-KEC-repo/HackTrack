@@ -602,7 +602,7 @@ export default function CoordinatorAnalyticsPage() {
                       onClick={() =>
                         handleOpenNudge(
                           team.name,
-                          `Reminder for ${team.name}: Please upload your presentation deck URL.`,
+                          `Reminder for ${team.name}: Please paste your presentation deck URL.`,
                           "PARTICIPANT",
                           team.id
                         )

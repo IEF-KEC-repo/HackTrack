@@ -115,7 +115,6 @@ export async function GET(
               members: {
                 include: { user: { select: { id: true, name: true, email: true } } },
               },
-              artifacts: true,
             },
           },
           event: {
@@ -173,7 +172,6 @@ export async function GET(
             name: m.user.name,
             role: m.role,
           })),
-          artifacts: evaluation.team.artifacts,
         },
         rubric,
         existingScores,

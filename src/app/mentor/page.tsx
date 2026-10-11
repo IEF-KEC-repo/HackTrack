@@ -38,7 +38,6 @@ interface MentorMilestone {
   isOverdue: boolean;
   isDueSoon?: boolean;
   daysOverdue?: number;
-  evidenceType?: string | null;
   evidenceUrl?: string | null;
   evidenceNotes?: string | null;
 }
@@ -60,17 +59,6 @@ interface MentorCheckInRecord {
   reviewedAt?: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-interface TeamArtifact {
-  id: string;
-  fileType: string;
-  originalName: string;
-  storedName: string;
-  fileUrl: string;
-  fileSize?: number | null;
-  mimeType?: string | null;
-  createdAt: string;
 }
 
 interface MentoredTeam {
@@ -103,7 +91,6 @@ interface MentoredTeam {
   latestCheckIn?: MentorCheckInRecord | null;
   milestones: MentorMilestone[];
   checkIns: MentorCheckInRecord[];
-  artifacts: TeamArtifact[];
 }
 
 interface MentorTeamsResponse {

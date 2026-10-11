@@ -1,6 +1,6 @@
 // HackTrack Prisma Relational Data Model
 // Edition-partitioned schema with full support for configurable event stages,
-// multi-role RBAC, weighted rubrics, 3-reviewer evaluations, artifacts, and audit logs.
+// multi-role RBAC, weighted rubrics, 3-reviewer evaluations, and audit logs.
 
 datasource db {
   provider  = "postgresql"
@@ -213,7 +213,6 @@ model Event {
   status             EventStatus @default(UPCOMING)
   submissionDeadline DateTime?
   evaluationDeadline DateTime?
-  uploadsEnabled        Boolean     @default(false)
   evaluatorCountPerTeam Int         @default(3)
   feedbackReleased      Boolean     @default(false)
   leaderboardPublished  Boolean     @default(false)
@@ -274,7 +273,6 @@ model Team {
   checkIns    CheckIn[]
   teamMilestones TeamMilestone[]
   conflicts   ConflictOfInterest[]
-  artifacts   Artifact[]
   announcements Announcement[]
   decisions   EventDecision[]
 
@@ -328,30 +326,9 @@ model Submission {
 
   team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
   event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  artifacts Artifact[]
 
   @@unique([teamId, eventId, roundNumber])
   @@index([eventId, status])
-}
-
-model Artifact {
-  id           String   @id @default(cuid())
-  teamId       String
-  submissionId String?
-  fileType     String   // e.g. "SLIDES_LINK", "REPORT_PDF", "CODE_ARCHIVE"
-  originalName String
-  storedName   String   // Renamed to: {regCode}_{sanitizedOriginalName}
-  fileUrl      String
-  fileSize     Int?
-  mimeType     String?
-  createdAt    DateTime @default(now())
-
-  team       Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
-  teamMilestones TeamMilestone[]
-
-  @@index([teamId])
-  @@index([storedName])
 }
 
 model Rubric {
@@ -443,11 +420,6 @@ enum MilestoneSource {
   TEAM_CUSTOM
 }
 
-enum EvidenceType {
-  LINK
-  FILE
-}
-
 model Milestone {
   id          String   @id @default(cuid())
   editionId   String
@@ -478,9 +450,7 @@ model TeamMilestone {
   status         MilestoneStatus @default(NOT_STARTED)
   isOverdue      Boolean         @default(false)
   isDueSoon      Boolean         @default(false)
-  evidenceType   EvidenceType?
   evidenceUrl    String?
-  evidenceFileId String?
   evidenceNotes  String?
   completedAt    DateTime?
   createdAt      DateTime        @default(now())
@@ -490,7 +460,6 @@ model TeamMilestone {
   edition      Edition    @relation(fields: [editionId], references: [id], onDelete: Cascade)
   event        Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
   milestone    Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  evidenceFile Artifact?  @relation(fields: [evidenceFileId], references: [id], onDelete: SetNull)
 
   @@index([teamId, status])
   @@index([editionId])

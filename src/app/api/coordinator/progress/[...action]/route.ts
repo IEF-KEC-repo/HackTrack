@@ -41,7 +41,6 @@ export async function GET(
         include: {
           mentor: { select: { id: true, name: true, email: true } },
           teamMilestones: {
-            include: { evidenceFile: true },
             orderBy: { dueDate: "asc" },
           },
           checkIns: {
@@ -53,7 +52,7 @@ export async function GET(
         orderBy: { regCode: "asc" },
       });
 
-      // 2. Fetch Events with Upload Status
+      // 2. Fetch Events for this edition
       const events = await prisma.event.findMany({
         where: { editionId: edition.id },
         select: {
@@ -62,7 +61,6 @@ export async function GET(
           slug: true,
           sequenceIndex: true,
           status: true,
-          uploadsEnabled: true,
         },
         orderBy: { sequenceIndex: "asc" },
       });
@@ -207,44 +205,6 @@ export async function POST(
       });
 
       return NextResponse.json({ success: true, milestone });
-    }
-
-    // ----------------------------------------------------
-    // POST: TOGGLE EVENT FILE UPLOADS (FR-5b)
-    // ----------------------------------------------------
-    if (action === "toggle-uploads") {
-      const body = await req.json();
-      const { eventId, uploadsEnabled } = body;
-
-      if (!eventId || typeof uploadsEnabled !== "boolean") {
-        return NextResponse.json(
-          { error: "eventId and uploadsEnabled (boolean) are required" },
-          { status: 400 }
-        );
-      }
-
-      const event = await prisma.event.update({
-        where: { id: eventId },
-        data: { uploadsEnabled },
-      });
-
-      // Audit Log
-      await prisma.auditLog.create({
-        data: {
-          editionId: event.editionId,
-          actorId: coordinatorId,
-          action: uploadsEnabled ? "EVENT_UPLOADS_ENABLED" : "EVENT_UPLOADS_DISABLED",
-          entityType: "Event",
-          entityId: event.id,
-          newState: JSON.stringify({ eventName: event.name, uploadsEnabled }),
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        event,
-        message: `Uploads ${uploadsEnabled ? "enabled" : "disabled"} for ${event.name}`,
-      });
     }
 
     // ----------------------------------------------------

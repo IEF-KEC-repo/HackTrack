@@ -40,7 +40,6 @@ interface EventInfo {
   id: string;
   name: string;
   slug: string;
-  uploadsEnabled: boolean;
 }
 
 interface MilestoneItem {
@@ -54,7 +53,6 @@ interface MilestoneItem {
   isDueSoon: boolean;
   daysOverdue: number;
   hoursRemaining: number;
-  evidenceType?: string | null;
   evidenceUrl?: string | null;
   evidenceNotes?: string | null;
   event?: EventInfo | null;
@@ -495,14 +493,14 @@ export default function ParticipantProgressPage() {
                             </span>
                           )}
 
-                          {m.evidenceType === "LINK" && m.evidenceUrl && (
+                          {m.evidenceUrl && (
                             <a
                               href={m.evidenceUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-indigo-600 hover:underline font-mono text-[10px] block break-all"
                             >
-                              View Artifact ↗
+                              View Evidence ↗
                             </a>
                           )}
                           {m.evidenceNotes && (

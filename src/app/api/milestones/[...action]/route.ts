@@ -135,9 +135,7 @@ export async function POST(
       const {
         teamMilestoneId,
         status,
-        evidenceType,
         evidenceUrl,
-        evidenceFileId,
         evidenceNotes,
       } = body;
 
@@ -151,9 +149,7 @@ export async function POST(
       const updated = await updateMilestoneProgress({
         teamMilestoneId,
         status,
-        evidenceType,
         evidenceUrl,
-        evidenceFileId,
         evidenceNotes,
       });
 

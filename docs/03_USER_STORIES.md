@@ -30,10 +30,10 @@
 
 ---
 
-## Epic 2: Team Formation, Registration & Artifacts
+## Epic 2: Team Formation & Registration
 
 ### US-2.1: Participant (Team Lead) — Team Registration & Unique Code Generation
-- **Story:** *As a Participant (Team Lead)*, I want to register our team (with a team name and track selection) and receive an auto-generated unique registration code (e.g., `HT26-T042`), *so that* our team identity is established and standardized across all future reviews and file submissions.
+- **Story:** *As a Participant (Team Lead)*, I want to register our team (with a team name and track selection) and receive an auto-generated unique registration code (e.g., `HT26-T042`), *so that* our team identity is established and standardized across all future reviews.
 - **Acceptance Criteria:**
   - Supports 1 to 6 members (solo allowed).
   - Atomically assigns a unique registration code upon creation.
@@ -52,13 +52,6 @@
   - Input field parses Google Slides URLs and extracts the presentation key.
   - Immediately displays an embedded preview iframe in the submission modal.
   - Validates that the link is accessible and provides helpful troubleshooting tips if permissions are set to private.
-
-### US-2.4: Participant (Team Lead) — Uploading Supporting Attachments
-- **Story:** *As a Participant (Team Lead)*, I want to upload required project attachments (PDF reports, ZIP archives) and have the system automatically rename them to our team's registration code, *so that* evaluators can easily identify our files without us having to manually conform to file naming schemes.
-- **Acceptance Criteria:**
-  - Uploaded files are renamed server-side to `{REG_CODE}_{ORIGINAL_NAME}.{ext}`.
-  - File size limits (max 25MB) and mime-types (`.pdf`, `.zip`, `.png`, `.jpg`) are enforced.
-  - Once the submission deadline locks, further file uploads and link edits are blocked.
 
 ---
 

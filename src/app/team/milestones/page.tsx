@@ -10,7 +10,6 @@ import { Modal } from "@/components/ui/Modal";
 
 type MilestoneStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
 type MilestoneSource = "COORDINATOR_MANDATORY" | "TEAM_CUSTOM";
-type EvidenceType = "LINK" | "FILE";
 type TeamHealth = "GREEN" | "YELLOW" | "RED";
 
 interface TeamMentor {
@@ -31,15 +30,6 @@ interface MilestoneEvent {
   id: string;
   name: string;
   slug: string;
-  uploadsEnabled: boolean;
-}
-
-interface EvidenceFile {
-  id: string;
-  originalName: string;
-  storedName: string;
-  fileUrl: string;
-  fileSize?: number | null;
 }
 
 interface MilestoneItem {
@@ -54,10 +44,8 @@ interface MilestoneItem {
   daysOverdue: number;
   hoursRemaining: number;
   event?: MilestoneEvent | null;
-  evidenceType?: EvidenceType | null;
   evidenceUrl?: string | null;
   evidenceNotes?: string | null;
-  evidenceFile?: EvidenceFile | null;
 }
 
 interface CheckInRecord {
@@ -149,13 +137,10 @@ export default function TeamMilestonesPage() {
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
 
   const [selectedMilestone, setSelectedMilestone] = useState<MilestoneItem | null>(null);
-  const [evidenceMode, setEvidenceMode] = useState<"LINK" | "FILE">("LINK");
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [evidenceNotes, setEvidenceNotes] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isSavingEvidence, setIsSavingEvidence] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
   const [checkInProgress, setCheckInProgress] = useState("");
@@ -322,98 +307,33 @@ export default function TeamMilestonesPage() {
     e.preventDefault();
     if (!selectedMilestone) return;
 
-    const uploadsEnabled = selectedMilestone.event ? selectedMilestone.event.uploadsEnabled : true;
+    setIsSavingEvidence(true);
+    setEvidenceError(null);
 
-    if (evidenceMode === "LINK") {
-      setIsSavingEvidence(true);
-      setUploadError(null);
-
-      try {
-        const res = await fetch("/api/milestones/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            teamMilestoneId: selectedMilestone.id,
-            status: "COMPLETED",
-            evidenceType: "LINK",
-            evidenceUrl: evidenceUrl || undefined,
-            evidenceNotes: evidenceNotes || undefined,
-          }),
-        });
-        const data = (await res.json()) as { milestone: MilestoneItem; error?: string };
-        if (!res.ok) {
-          throw new Error(data?.error || "Failed to save evidence.");
-        }
-
-        patchMilestoneLocally(data.milestone);
-        setSelectedMilestone(null);
-        setEvidenceUrl("");
-        setEvidenceNotes("");
-      } catch (err) {
-        setUploadError(err instanceof Error ? err.message : "Failed to save evidence.");
-      } finally {
-        setIsSavingEvidence(false);
-      }
-    } else {
-      // File Upload
-      if (!uploadsEnabled) {
-        setUploadError("File uploads are disabled for this milestone's event stage.");
-        return;
+    try {
+      const res = await fetch("/api/milestones/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamMilestoneId: selectedMilestone.id,
+          status: "COMPLETED",
+          evidenceUrl: evidenceUrl || undefined,
+          evidenceNotes: evidenceNotes || undefined,
+        }),
+      });
+      const data = (await res.json()) as { milestone: MilestoneItem; error?: string };
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to save evidence.");
       }
 
-      if (!selectedFile) {
-        setUploadError("Please select a file to upload.");
-        return;
-      }
-
-      setIsUploading(true);
-      setUploadError(null);
-
-      try {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        formData.append("teamId", team?.id ?? "");
-        formData.append("fileType", "MILESTONE_EVIDENCE");
-
-        const res = await fetch("/api/artifacts/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        const uploadData = (await res.json()) as { artifact?: EvidenceFile; error?: string };
-        if (!res.ok) {
-          throw new Error(uploadData.error || "File upload failed.");
-        }
-        if (!uploadData.artifact) {
-          throw new Error("File upload response missing artifact.");
-        }
-
-        // Attach uploaded artifact to milestone via the real update route.
-        const updateRes = await fetch("/api/milestones/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            teamMilestoneId: selectedMilestone.id,
-            status: "COMPLETED",
-            evidenceType: "FILE",
-            evidenceFileId: uploadData.artifact.id,
-            evidenceNotes: evidenceNotes || undefined,
-          }),
-        });
-        const updateData = (await updateRes.json()) as { milestone: MilestoneItem; error?: string };
-        if (!updateRes.ok) {
-          throw new Error(updateData?.error || "Failed to attach uploaded evidence.");
-        }
-
-        patchMilestoneLocally(updateData.milestone);
-        setSelectedMilestone(null);
-        setSelectedFile(null);
-        setEvidenceNotes("");
-      } catch (err) {
-        setUploadError(err instanceof Error ? err.message : "Failed to upload file.");
-      } finally {
-        setIsUploading(false);
-      }
+      patchMilestoneLocally(data.milestone);
+      setSelectedMilestone(null);
+      setEvidenceUrl("");
+      setEvidenceNotes("");
+    } catch (err) {
+      setEvidenceError(err instanceof Error ? err.message : "Failed to save evidence.");
+    } finally {
+      setIsSavingEvidence(false);
     }
   };
 
@@ -637,7 +557,7 @@ export default function TeamMilestonesPage() {
           <div>
             <h2 className="text-lg font-bold text-slate-900">Milestone Deliverables & Evidence</h2>
             <p className="text-xs text-slate-500">
-              Submit proof-of-work (GitHub commit, Figma diagram, or uploaded artifact) to mark items complete.
+              Submit proof-of-work (GitHub commit, Figma diagram, or reference link) to mark items complete.
             </p>
           </div>
 
@@ -745,7 +665,7 @@ export default function TeamMilestonesPage() {
                       <span className="text-emerald-700 font-semibold flex items-center gap-1">
                         ✓ Evidence Provided:
                       </span>
-                      {m.evidenceType === "LINK" && m.evidenceUrl && (
+                      {m.evidenceUrl && (
                         <a
                           href={m.evidenceUrl}
                           target="_blank"
@@ -754,11 +674,6 @@ export default function TeamMilestonesPage() {
                         >
                           {m.evidenceUrl}
                         </a>
-                      )}
-                      {m.evidenceType === "FILE" && m.evidenceFile && (
-                        <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 border border-slate-200">
-                          📄 {m.evidenceFile.storedName}
-                        </span>
                       )}
                       {m.evidenceNotes && (
                         <span className="text-slate-500 italic">({m.evidenceNotes})</span>
@@ -805,10 +720,9 @@ export default function TeamMilestonesPage() {
                     size="sm"
                     onClick={() => {
                       setSelectedMilestone(m);
-                      setEvidenceMode("LINK");
                       setEvidenceUrl(m.evidenceUrl || "");
                       setEvidenceNotes(m.evidenceNotes || "");
-                      setUploadError(null);
+                      setEvidenceError(null);
                     }}
                   >
                     {m.status === "COMPLETED" ? "Edit Evidence" : "Attach Proof"}
@@ -952,84 +866,24 @@ export default function TeamMilestonesPage() {
         </form>
       </Modal>
 
-      {/* Modal: Attach Evidence (Link or Server-Renamed File Upload) */}
+      {/* Modal: Attach Evidence (External Link) */}
       <Modal
         isOpen={!!selectedMilestone}
         onClose={() => setSelectedMilestone(null)}
         title={`Attach Evidence: ${selectedMilestone?.title}`}
       >
         <form onSubmit={handleSaveEvidence} className="space-y-4">
-          {uploadError && <Alert variant="error" title="Upload Failed">{uploadError}</Alert>}
+          {evidenceError && <Alert variant="error" title="Unable to Save Evidence">{evidenceError}</Alert>}
 
-          {selectedMilestone?.event && !selectedMilestone.event.uploadsEnabled && (
-            <Alert variant="warning" title="Uploads Disabled for This Stage">
-              File uploads are disabled for the {`"${selectedMilestone.event.name}"`} stage. You can still
-              attach an external link as evidence.
-            </Alert>
-          )}
-
-          {/* Evidence Type Switcher */}
-          <div className="flex rounded-md border border-slate-200 p-1 bg-slate-50 text-xs">
-            <button
-              type="button"
-              onClick={() => setEvidenceMode("LINK")}
-              className={`flex-1 py-1.5 rounded font-semibold text-center ${
-                evidenceMode === "LINK" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"
-              }`}
-            >
-              🔗 External Link (GitHub / Figma / Loom)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const uploadsEnabled = selectedMilestone?.event
-                  ? selectedMilestone.event.uploadsEnabled
-                  : true;
-                if (!uploadsEnabled) {
-                  setUploadError("File uploads are disabled for this milestone's event stage.");
-                  return;
-                }
-                setEvidenceMode("FILE");
-              }}
-              disabled={
-                selectedMilestone?.event ? !selectedMilestone.event.uploadsEnabled : false
-              }
-              className={`flex-1 py-1.5 rounded font-semibold text-center transition-colors ${
-                evidenceMode === "FILE" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"
-              } ${selectedMilestone?.event && !selectedMilestone.event.uploadsEnabled ? "opacity-40 cursor-not-allowed" : "hover:bg-white"}`}
-            >
-              📁 File Upload (Renamed to {team.regCode})
-            </button>
-          </div>
-
-          {evidenceMode === "LINK" ? (
-            <Input
-              label="Evidence URL"
-              required
-              type="url"
-              placeholder="https://github.com/..."
-              value={evidenceUrl}
-              onChange={(e) => setEvidenceUrl(e.target.value)}
-              hint="Link to public PR, GitHub commit, Figma design, or demo video."
-            />
-          ) : (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Upload Supporting Artifact (Max 25MB)
-              </label>
-              <input
-                type="file"
-                required
-                accept=".pdf,.zip,.png,.jpg,.jpeg,.docx"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                🔒 Security Note: Server automatically renames your file to{" "}
-                <span className="font-mono text-indigo-700">{team.regCode}_filename.ext</span>.
-              </p>
-            </div>
-          )}
+          <Input
+            label="Evidence URL"
+            required
+            type="url"
+            placeholder="https://github.com/..."
+            value={evidenceUrl}
+            onChange={(e) => setEvidenceUrl(e.target.value)}
+            hint="Link to a public PR, GitHub commit, Figma design, or demo video."
+          />
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1048,7 +902,7 @@ export default function TeamMilestonesPage() {
             <Button variant="outline" type="button" onClick={() => setSelectedMilestone(null)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={isUploading || isSavingEvidence}>
+            <Button variant="primary" type="submit" isLoading={isSavingEvidence}>
               Mark Completed & Attach Evidence
             </Button>
           </div>

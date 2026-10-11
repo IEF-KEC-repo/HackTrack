@@ -30,8 +30,6 @@ export async function middleware(req: NextRequest) {
 
     if (pathname.startsWith("/api/auth")) {
       tier = RATE_LIMIT_TIERS.AUTH;
-    } else if (pathname.startsWith("/api/artifacts/upload")) {
-      tier = RATE_LIMIT_TIERS.UPLOAD;
     } else if (pathname.startsWith("/api/evaluator")) {
       tier = RATE_LIMIT_TIERS.EVALUATOR;
     }

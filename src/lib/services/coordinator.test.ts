@@ -149,7 +149,7 @@ describe("Coordinator Business Logic & Validation Engine", () => {
       expect(errors[0].reason).toContain("Invalid email format");
     });
 
-    it("detects duplicate emails within the uploaded CSV file", () => {
+    it("detects duplicate emails within the pasted CSV file", () => {
       const headers = ["email", "name", "role"];
       const rows = [
         ["user@college.edu", "First Entry", "PARTICIPANT"],
@@ -159,7 +159,7 @@ describe("Coordinator Business Logic & Validation Engine", () => {
       const { validRows, errors } = validateCsvRows(headers, rows);
       expect(validRows).toHaveLength(1);
       expect(errors).toHaveLength(1);
-      expect(errors[0].reason).toContain("Duplicate email within uploaded CSV");
+      expect(errors[0].reason).toContain("Duplicate email within pasted CSV");
     });
 
     it("detects unrecognized role values", () => {

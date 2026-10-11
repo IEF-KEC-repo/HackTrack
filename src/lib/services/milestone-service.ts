@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { MilestoneSource, MilestoneStatus, EvidenceType } from "@prisma/client";
+import { MilestoneSource, MilestoneStatus } from "@prisma/client";
 
 export interface ProgressSummary {
   mandatoryTotal: number;
@@ -227,18 +227,15 @@ export async function createTeamCustomMilestone(params: {
 }
 
 /**
- * Database operation: Updates milestone progress and attaches evidence (Link or File).
+ * Database operation: Updates milestone progress and attaches link evidence.
  */
 export async function updateMilestoneProgress(params: {
   teamMilestoneId: string;
   status: MilestoneStatus;
-  evidenceType?: EvidenceType;
   evidenceUrl?: string;
-  evidenceFileId?: string;
   evidenceNotes?: string;
 }) {
-  const { teamMilestoneId, status, evidenceType, evidenceUrl, evidenceFileId, evidenceNotes } =
-    params;
+  const { teamMilestoneId, status, evidenceUrl, evidenceNotes } = params;
 
   const milestone = await prisma.teamMilestone.findUnique({
     where: { id: teamMilestoneId },
@@ -257,17 +254,14 @@ export async function updateMilestoneProgress(params: {
     where: { id: teamMilestoneId },
     data: {
       status,
-      evidenceType: evidenceType || milestone.evidenceType,
       evidenceUrl: evidenceUrl !== undefined ? evidenceUrl : milestone.evidenceUrl,
-      evidenceFileId: evidenceFileId !== undefined ? evidenceFileId : milestone.evidenceFileId,
       evidenceNotes: evidenceNotes !== undefined ? evidenceNotes : milestone.evidenceNotes,
       completedAt,
       isOverdue: status === MilestoneStatus.COMPLETED ? false : milestone.isOverdue,
       isDueSoon: status === MilestoneStatus.COMPLETED ? false : milestone.isDueSoon,
     },
     include: {
-      evidenceFile: true,
-      event: { select: { id: true, name: true, slug: true, uploadsEnabled: true } },
+      event: { select: { id: true, name: true, slug: true } },
     },
   });
 }
@@ -279,8 +273,7 @@ export async function getTeamMilestones(teamId: string, now: Date = new Date()) 
   const milestones = await prisma.teamMilestone.findMany({
     where: { teamId },
     include: {
-      evidenceFile: true,
-      event: { select: { id: true, name: true, slug: true, uploadsEnabled: true } },
+      event: { select: { id: true, name: true, slug: true } },
     },
     orderBy: { dueDate: "asc" },
   });

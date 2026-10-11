@@ -20,7 +20,6 @@ This checklist documents the security controls, authorization matrix, threat mit
 [ Protected API Handlers / Server Actions ]
         │
         ├──► Input Sanitization & Type Validation
-        ├──► File Upload Inspector (25MB max, MIME & Ext Whitelist, Stored-as-RegCode)
         ├──► Double-Blind Gating (Zero score/deck leaks prior to official publication)
         │
         ▼
@@ -37,7 +36,6 @@ Every API route and server action enforces strict role-based access control (RBA
 | :--- | :--- | :--- | :--- |
 | `/api/auth/*` | All (Public) | POST | Rate limited to 10 req/min (brute-force defense) |
 | `/api/teams/*` | `PARTICIPANT`, `COORDINATOR_MANAGE`, `SUPER_ADMIN` | GET, POST, PATCH | Team leads only can mutate rosters; 6-member cap enforced |
-| `/api/artifacts/upload` | `PARTICIPANT`, `COORDINATOR_MANAGE` | POST | 15 req/min; 25MB max; renamed to `${REGCODE}_...` |
 | `/api/evaluator/*` | `EVALUATOR`, `SUPER_ADMIN` | GET, POST | Only assigned evaluators can score; double-blind sandboxed deck |
 | `/api/evaluator/scoring/submit`| `EVALUATOR` | POST | Enforces $\ge 20$ chars feedback; review locks upon submit |
 | `/api/coordinator/events/*` | `COORDINATOR_MANAGE`, `SUPER_ADMIN` | GET, POST, PUT, DELETE | `COORDINATOR_VIEW` blocked with `403` |
@@ -54,10 +52,7 @@ Every API route and server action enforces strict role-based access control (RBA
 
 ## 3. Threat Mitigation Checklist
 
-### 3.1 Input Validation & Path Traversal Prevention
-- [x] **File Sanitization**: `sanitizeFilename` strips directory traversal (`../`, `..\`), special characters, and shell injection tokens.
-- [x] **RegCode Storage Renaming**: Stored files are always renamed to `${cleanRegCode}_${cleanBase}_${timestamp}.${cleanExt}`.
-- [x] **File Size & Type Whitelist**: Strict 25MB maximum limit. Whitelist: `.pdf`, `.zip`, `.png`, `.jpg`, `.jpeg`, `.docx`.
+### 3.1 Input Validation
 - [x] **Google Slides Verification**: RegEx validation ensures presentation URL starts with `https://docs.google.com/presentation/d/{ID}`.
 
 ### 3.2 SQL & Query Injection Defense
@@ -73,7 +68,6 @@ Every API route and server action enforces strict role-based access control (RBA
 - [x] **Sliding-Window Limiter**: In-memory rate limiting with automatic background eviction of expired windows.
 - [x] **Tiered Capacity**:
   - `AUTH`: 10 requests / minute per IP
-  - `UPLOAD`: 15 requests / minute per IP
   - `EVALUATOR`: 60 requests / minute per IP
   - `GENERAL`: 200 requests / minute per IP
 - [x] **HTTP 429 Compliance**: Exceeded requests receive `429 Too Many Requests` with `Retry-After: <seconds>` headers.

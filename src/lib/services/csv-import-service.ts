@@ -134,7 +134,7 @@ export function validateCsvRows(headers: string[], rows: string[][]): {
         row: rowNum,
         email: rawEmail,
         field: "email",
-        reason: "Duplicate email within uploaded CSV file.",
+        reason: "Duplicate email within pasted CSV file.",
       });
       return;
     }

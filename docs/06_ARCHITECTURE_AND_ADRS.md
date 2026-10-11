@@ -25,14 +25,13 @@ flowchart TB
         MW[Edge RBAC Middleware]
         AUTH[Auth.js / JWT Session Engine]
         NORM[Ideathon Normalization Engine]
-        ART[Artifact & Slide Embed Handler]
+        ART[Slide Embed Handler]
         API[Server Actions & Route Handlers]
     end
 
     subgraph Data_Tier [Persistence Layer]
         PRISMA[Prisma ORM Client]
         PG[(PostgreSQL Database)]
-        STORAGE[(Object Storage - S3 / R2)]
     end
 
     P & E & M & CV & CM & SA -->|HTTPS| MW
@@ -42,7 +41,6 @@ flowchart TB
     API --> ART
     API --> PRISMA
     PRISMA --> PG
-    ART --> STORAGE
 ```
 
 ---
@@ -243,13 +241,13 @@ erDiagram
 - **Decision:** Implement a declarative route guard in Next.js Middleware that inspects both the route pattern and HTTP verb. If `method` is in `[POST, PUT, PATCH, DELETE]` and the user's role is `COORDINATOR_VIEW`, the request is immediately rejected with HTTP 403 Forbidden.
 - **Consequences:** Guarantees tamper-proof protection at the perimeter, even if a user manipulates client-side form controls or sends direct curl requests.
 
-### ADR-005: Sandboxed Google Slides Embed & Sanitized File Naming Pipeline
+### ADR-005: Sandboxed Google Slides Embed (No File Storage)
 - **Status:** Approved
-- **Context:** Evaluators need instant presentation access without clicking external links or requesting Google Drive permissions. Secondary files (PDFs, ZIPs) must not collide or suffer from inconsistent student naming.
+- **Context:** Evaluators need instant presentation access without clicking external links or requesting Google Drive permissions. An earlier design also generated server-renamed copies of secondary files (PDFs, ZIPs) in object storage.
 - **Decision:** 
   1. The platform automatically extracts the presentation ID from student Google Slides URLs and converts it to `/embed?start=false&loop=false&delayms=3000`, rendered in a sandboxed iframe.
-  2. Uploaded files are renamed server-side to `{REG_CODE}_{SANITIZED_FILENAME}.{ext}` prior to storage persistence.
-- **Consequences:** Eliminates presentation tab-switching during evaluations; ensures that every file stored in S3/R2 is deterministically identifiable by team registration code.
+  2. Secondary file uploads are out of scope. The Google Slides link is the only deck-sharing path; no files are persisted to object storage and no server-side renaming pipeline exists.
+- **Consequences:** Eliminates presentation tab-switching during evaluations and removes the need for object storage and its associated attack surface.
 
 ### ADR-006: Z-Score Normalization for Ideathon 3-Reviewer Scoring
 - **Status:** Approved

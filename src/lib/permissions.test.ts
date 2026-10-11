@@ -193,7 +193,7 @@ describe("HackTrack RBAC & Permission Matrix", () => {
   // 7. PARTICIPANT
   // ----------------------------------------------------
   describe("Participant Permissions", () => {
-    it("allows access to team portal and artifact mutations", () => {
+    it("allows access to the team portal", () => {
       expect(canAccessRoute(participantSession, "/team", "GET").allowed).toBe(true);
       expect(canAccessRoute(participantSession, "/team", "POST").allowed).toBe(true);
     });

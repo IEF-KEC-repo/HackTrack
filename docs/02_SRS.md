@@ -17,12 +17,12 @@ HackTrack is built using Next.js 15 (App Router with TypeScript), PostgreSQL man
                                       | HTTPS / Server Actions / REST
        +------------------------------v------------------------------+
        |                 Application Layer (Next.js)                 |
-       |  Auth.js (RBAC)  | Normalization Engine | Artifact Handler  |
+       |  Auth.js (RBAC)  | Normalization Engine | Slides Embed Hdl  |
        +------------------------------+------------------------------+
                                       | Prisma Client
        +------------------------------v------------------------------+
        |                     Persistence Layer                       |
-       |       PostgreSQL (Relational Core) | Object Storage (Files) |
+       |       PostgreSQL (Relational Core)                           |
        +-------------------------------------------------------------+
 ```
 
@@ -51,7 +51,7 @@ HackTrack is built using Next.js 15 (App Router with TypeScript), PostgreSQL man
 - **Acceptance Criteria:**
   - *Given* an event in `SUBMISSION_OPEN`,
   - *When* the deadline timestamp passes or Coordinator triggers `SUBMISSION_LOCKED`,
-  - *Then* all team submission mutations are rejected with HTTP 403, and teams cannot alter slide links or attachments.
+  - *Then* all team submission mutations are rejected with HTTP 403, and teams cannot alter slide links.
 
 ---
 
@@ -80,7 +80,7 @@ HackTrack is built using Next.js 15 (App Router with TypeScript), PostgreSQL man
 
 ---
 
-### 2.3 Artifact Management & Google Slides Embedding (FR-AS)
+### 2.3 Google Slides Embedding (FR-AS)
 
 #### FR-AS-001: Google Slides Shareable Link Embedding
 - **Description:** Teams shall submit exactly one Google Slides URL for each submission-eligible event. The system shall validate the URL structure and transform standard share links (`https://docs.google.com/presentation/d/{ID}/edit?usp=sharing`) into sandboxed embed URLs (`https://docs.google.com/presentation/d/{ID}/embed?start=false&loop=false&delayms=3000`).
@@ -89,13 +89,6 @@ HackTrack is built using Next.js 15 (App Router with TypeScript), PostgreSQL man
   - *When* the URL matches the Google Slides regex pattern,
   - *Then* the system extracts the Presentation ID, stores both raw and embed URLs, and renders an interactive embedded preview in the submission dialog.
   - *If* an invalid link is provided (e.g. non-Google Slides URL), the system rejects the input with an actionable error.
-
-#### FR-AS-002: Automatic File Renaming to Registration Code
-- **Description:** For events requiring supporting file uploads (e.g., source archives, circuit designs, research PDFs), the system shall intercept incoming files and rename them server-side to `{REGISTRATION_CODE}_{SANITIZED_ORIGINAL_NAME}.{ext}` prior to persisting to storage.
-- **Acceptance Criteria:**
-  - *Given* team `HT26-T042` uploading `system architecture final (2).pdf`,
-  - *When* the file passes virus/mime validation,
-  - *Then* the file is stored as `HT26-T042_system_architecture_final_2.pdf` and metadata is recorded in the `Artifact` table.
 
 ---
 
@@ -172,7 +165,7 @@ HackTrack is built using Next.js 15 (App Router with TypeScript), PostgreSQL man
 
 ### 3.2 Security & Data Protection (NFR-SEC)
 - **NFR-SEC-001:** Strict Role-Based Access Control (RBAC) enforced via server-side middleware and Prisma query filters. `Coordinator View` must be barred from executing any HTTP `POST`, `PUT`, `PATCH`, or `DELETE` mutation endpoints.
-- **NFR-SEC-002:** File upload endpoints must validate Magic Bytes (MIME type verification) and restrict uploads to approved extensions (`.pdf`, `.zip`, `.png`, `.jpg`) with a max file size of 25MB.
+- **NFR-SEC-002:** The Google Slides embed URL shall be validated and rendered in a sandboxed iframe to prevent XSS and clickjacking.
 - **NFR-SEC-003:** Embedded Google Slides links must be sanitized to prevent XSS and clickjacking; iframes must enforce `sandbox="allow-scripts allow-same-origin allow-popups"`.
 
 ### 3.3 Scalability & Concurrency (NFR-SCALE)

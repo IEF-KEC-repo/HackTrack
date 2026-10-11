@@ -38,8 +38,8 @@ Each event stage in an edition transitions through an explicit lifecycle managed
 | :--- | :--- |
 | `UPCOMING` | Event details published. Rubrics can be configured. Teams can view prerequisites. No submissions allowed. |
 | `REGISTRATION_OPEN` | Teams can sign up for the event stage or verify roster eligibility. |
-| `SUBMISSION_OPEN` | Team Leads can submit/update Google Slides URLs and upload supporting attachments. Real-time preview enabled. |
-| `SUBMISSION_LOCKED` | Deadlines pass. All artifact mutation endpoints locked (read-only). File uploads frozen. |
+| `SUBMISSION_OPEN` | Team Leads can submit/update their Google Slides URL. Real-time preview enabled. |
+| `SUBMISSION_LOCKED` | Deadlines pass. Slides-link edits locked (read-only). |
 | `EVALUATION_ACTIVE` | Evaluators assigned. Evaluator cockpit unlocked. Rubric scoring and comment submission enabled. |
 | `EVALUATION_LOCKED` | Evaluator scoring locked. Normalization and coordinator moderation/overrides active. |
 | `COMPLETED` | Gate decisions committed. Final scores and advancement flags published. Cohort promoted. |
@@ -155,7 +155,7 @@ stateDiagram-v2
 #### Entry Rules:
 1. Team state: `POC_QUALIFIED`.
 2. Working demo video link (e.g., Loom or unlisted YouTube) and public/private GitHub repository access provided.
-3. Secondary files uploaded (renamed to `{REG_CODE}_test_results.pdf`).
+3. Supporting links (repository, demo video, test results) verified.
 
 #### Exit Rules:
 - Evaluator marks `DEMO_VERIFIED = TRUE`.
@@ -175,7 +175,7 @@ stateDiagram-v2
 1. Finalists pitch live before the Grand Jury.
 2. Real-time scoring using weighted finale rubric (Technical Innovation 30%, Completeness 30%, Commercial Viability 20%, Pitch & Q&A 20%).
 3. Platform aggregates jury scores, handles tie-breaking rules, and renders private coordinator podium rankings.
-4. Winner announcement triggers transition of edition to `COMPLETED` and archives all artifacts.
+4. Winner announcement triggers transition of edition to `COMPLETED` and archives all submissions.
 
 ---
 

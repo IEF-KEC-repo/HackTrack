@@ -49,9 +49,6 @@ CREATE TYPE "MilestoneStatus" AS ENUM ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'
 -- CreateEnum
 CREATE TYPE "MilestoneSource" AS ENUM ('COORDINATOR_MANDATORY', 'TEAM_CUSTOM');
 
--- CreateEnum
-CREATE TYPE "EvidenceType" AS ENUM ('LINK', 'FILE');
-
 -- CreateTable
 CREATE TABLE "Edition" (
     "id" TEXT NOT NULL,
@@ -106,7 +103,6 @@ CREATE TABLE "Event" (
     "status" "EventStatus" NOT NULL DEFAULT 'UPCOMING',
     "submissionDeadline" TIMESTAMP(3),
     "evaluationDeadline" TIMESTAMP(3),
-    "uploadsEnabled" BOOLEAN NOT NULL DEFAULT false,
     "evaluatorCountPerTeam" INTEGER NOT NULL DEFAULT 3,
     "feedbackReleased" BOOLEAN NOT NULL DEFAULT false,
     "leaderboardPublished" BOOLEAN NOT NULL DEFAULT false,
@@ -184,22 +180,6 @@ CREATE TABLE "Submission" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Submission_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "Artifact" (
-    "id" TEXT NOT NULL,
-    "teamId" TEXT NOT NULL,
-    "submissionId" TEXT,
-    "fileType" TEXT NOT NULL,
-    "originalName" TEXT NOT NULL,
-    "storedName" TEXT NOT NULL,
-    "fileUrl" TEXT NOT NULL,
-    "fileSize" INTEGER,
-    "mimeType" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Artifact_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -294,9 +274,7 @@ CREATE TABLE "TeamMilestone" (
     "status" "MilestoneStatus" NOT NULL DEFAULT 'NOT_STARTED',
     "isOverdue" BOOLEAN NOT NULL DEFAULT false,
     "isDueSoon" BOOLEAN NOT NULL DEFAULT false,
-    "evidenceType" "EvidenceType",
     "evidenceUrl" TEXT,
-    "evidenceFileId" TEXT,
     "evidenceNotes" TEXT,
     "completedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -536,12 +514,6 @@ CREATE INDEX "Submission_eventId_status_idx" ON "Submission"("eventId", "status"
 CREATE UNIQUE INDEX "Submission_teamId_eventId_roundNumber_key" ON "Submission"("teamId", "eventId", "roundNumber");
 
 -- CreateIndex
-CREATE INDEX "Artifact_teamId_idx" ON "Artifact"("teamId");
-
--- CreateIndex
-CREATE INDEX "Artifact_storedName_idx" ON "Artifact"("storedName");
-
--- CreateIndex
 CREATE INDEX "Rubric_eventId_idx" ON "Rubric"("eventId");
 
 -- CreateIndex
@@ -704,12 +676,6 @@ ALTER TABLE "Submission" ADD CONSTRAINT "Submission_teamId_fkey" FOREIGN KEY ("t
 ALTER TABLE "Submission" ADD CONSTRAINT "Submission_eventId_fkey" FOREIGN KEY ("eventId") REFERENCES "Event"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Artifact" ADD CONSTRAINT "Artifact_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Artifact" ADD CONSTRAINT "Artifact_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Rubric" ADD CONSTRAINT "Rubric_eventId_fkey" FOREIGN KEY ("eventId") REFERENCES "Event"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -747,9 +713,6 @@ ALTER TABLE "TeamMilestone" ADD CONSTRAINT "TeamMilestone_eventId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "TeamMilestone" ADD CONSTRAINT "TeamMilestone_milestoneId_fkey" FOREIGN KEY ("milestoneId") REFERENCES "Milestone"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TeamMilestone" ADD CONSTRAINT "TeamMilestone_evidenceFileId_fkey" FOREIGN KEY ("evidenceFileId") REFERENCES "Artifact"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CheckIn" ADD CONSTRAINT "CheckIn_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;

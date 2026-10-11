@@ -64,7 +64,6 @@ interface WorkspaceResponse {
     slidesUrl: string | null;
     embedSlidesUrl: string | null;
     members: Array<{ name: string; role: string }>;
-    artifacts: unknown[];
   };
   rubric: { id: string; criteria: RubricCriterion[] } | null;
   existingScores: Record<string, number>;

@@ -55,7 +55,6 @@ export interface ExportMilestoneItem {
   submittedAt?: string | null;
   isOverdue: boolean;
   daysOverdue: number;
-  evidenceType?: string | null;
   evidenceUrl?: string | null;
 }
 
@@ -206,7 +205,6 @@ export function exportMilestonesToCsv(milestones: ExportMilestoneItem[]): string
     "Submitted At",
     "Overdue?",
     "Days Overdue",
-    "Evidence Type",
     "Evidence URL",
   ];
 
@@ -220,7 +218,6 @@ export function exportMilestonesToCsv(milestones: ExportMilestoneItem[]): string
     m.submittedAt || "Unsubmitted",
     m.isOverdue ? "YES" : "NO",
     m.daysOverdue,
-    m.evidenceType || "N/A",
     m.evidenceUrl || "",
   ]);
 

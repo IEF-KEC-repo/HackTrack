@@ -39,7 +39,7 @@ Welcome to HackTrack! This guide helps you and your teammates navigate team crea
 
 ### 1.4 Milestones & Mentor Cadence
 - **Mandatory Deliverables**: Check the deliverable checklist for mandatory checkpoints (e.g. System Architecture Diagram, Bench Latency Benchmarks).
-- **Uploading Evidence**: Files (PDFs, ZIPs) are automatically renamed to your team registration code upon upload (`HT26-T042_...`).
+- **Attaching Evidence**: Mark a deliverable complete by attaching an external link (GitHub PR, Figma design, or demo video) as proof of work.
 - **Mentor Guidance**: You must meet with your assigned mentor at least once every **14 days**. Your cadence health status will show `Healthy ✅` or flag an amber warning if check-ins lapse.
 
 ---

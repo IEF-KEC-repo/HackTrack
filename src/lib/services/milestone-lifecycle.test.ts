@@ -3,12 +3,6 @@ import {
   calculateTeamProgress,
   evaluateMilestoneDueStatus,
 } from "./milestone-service";
-import {
-  sanitizeFilename,
-  generateServerStoredFilename,
-  validateFileUpload,
-  MAX_FILE_SIZE_BYTES,
-} from "./artifact-service";
 import { evaluateCheckInCadence } from "./checkin-service";
 import { canMutateEventConfig } from "@/lib/permissions";
 import { EditionRole } from "@prisma/client";
@@ -86,88 +80,6 @@ describe("Milestone Progress & Due Status Engine", () => {
   });
 });
 
-describe("Server-Side File Renaming & Upload Validation (FR-5b)", () => {
-  it("sanitizes unsafe client filenames, stripping directory traversals and special characters", () => {
-    const dirty = "../../dangerous/My Crazy Schematic (1)#$.pdf";
-    const sanitized = sanitizeFilename(dirty);
-
-    expect(sanitized.extension).toBe("pdf");
-    expect(sanitized.baseName).not.toContain("..");
-    expect(sanitized.baseName).not.toContain("/");
-    expect(sanitized.baseName).not.toContain(" ");
-    expect(sanitized.sanitizedFilename).toMatch(/^[a-z0-9_-]+\.pdf$/);
-  });
-
-  it("generates server stored filename with team registration code prefix", () => {
-    const stored = generateServerStoredFilename("HT26-T001", "firmware_v2.zip", 1740000000000);
-
-    expect(stored.startsWith("HT26-T001_")).toBe(true);
-    expect(stored).toBe("HT26-T001_firmware_v2_1740000000000.zip");
-  });
-
-  it("never trusts client-supplied filename and safely prefixes random or malicious input", () => {
-    const stored = generateServerStoredFilename("HT26-T042", "../../../passwd.pdf", 1740000000000);
-
-    expect(stored.startsWith("HT26-T042_")).toBe(true);
-    expect(stored).not.toContain("..");
-    expect(stored).not.toContain("/");
-  });
-
-  it("blocks file uploads when event uploads are disabled", () => {
-    const res = validateFileUpload({
-      eventUploadsEnabled: false,
-      fileSizeBytes: 1024 * 1024,
-      mimeType: "application/pdf",
-      filename: "test.pdf",
-    });
-
-    expect(res.valid).toBe(false);
-    expect(res.error).toContain("File uploads are not enabled");
-  });
-
-  it("blocks files exceeding the 25MB maximum limit", () => {
-    const res = validateFileUpload({
-      eventUploadsEnabled: true,
-      fileSizeBytes: MAX_FILE_SIZE_BYTES + 1000,
-      mimeType: "application/pdf",
-      filename: "huge.pdf",
-    });
-
-    expect(res.valid).toBe(false);
-    expect(res.error).toContain("exceeds the 25MB maximum limit");
-  });
-
-  it("blocks disallowed file extensions such as .exe or .sh", () => {
-    const res = validateFileUpload({
-      eventUploadsEnabled: true,
-      fileSizeBytes: 1024,
-      mimeType: "application/x-msdownload",
-      filename: "malware.exe",
-    });
-
-    expect(res.valid).toBe(false);
-    expect(res.error).toContain("Unsupported file extension");
-  });
-
-  it("allows valid PDF, ZIP, PNG, and DOCX within 25MB limit when uploads are enabled", () => {
-    const resPdf = validateFileUpload({
-      eventUploadsEnabled: true,
-      fileSizeBytes: 5 * 1024 * 1024,
-      mimeType: "application/pdf",
-      filename: "architecture_diagram.pdf",
-    });
-    expect(resPdf.valid).toBe(true);
-
-    const resZip = validateFileUpload({
-      eventUploadsEnabled: true,
-      fileSizeBytes: 15 * 1024 * 1024,
-      mimeType: "application/zip",
-      filename: "source_code.zip",
-    });
-    expect(resZip.valid).toBe(true);
-  });
-});
-
 describe("Fortnightly Check-In Cadence & Reminder Engine", () => {
   it("indicates initial check-in is due when no prior check-in has been logged", () => {
     const cadence = evaluateCheckInCadence(null);
@@ -213,7 +125,7 @@ describe("Fortnightly Check-In Cadence & Reminder Engine", () => {
 });
 
 describe("Mentor Isolation & View-Only Guard", () => {
-  it("enforces coordinator view-only write protection on milestone and upload mutation actions", () => {
+  it("enforces coordinator view-only write protection on milestone mutation actions", () => {
     expect(canMutateEventConfig(EditionRole.COORDINATOR_VIEW)).toBe(false);
     expect(canMutateEventConfig(EditionRole.COORDINATOR_MANAGE)).toBe(true);
     expect(canMutateEventConfig(EditionRole.SUPER_ADMIN)).toBe(true);

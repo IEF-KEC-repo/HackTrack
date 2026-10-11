@@ -61,7 +61,7 @@ export const ROUTE_RULES: RouteRule[] = [
     allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "MENTOR"],
     allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "MENTOR"],
   },
-  // Participant Team Zone (Profile, Deck URL, Uploads, Milestones)
+  // Participant Team Zone (Profile, Deck URL, Milestones)
   {
     pattern: /^\/team(\/.*)?$/,
     allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT"],
@@ -198,8 +198,6 @@ export const API_ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/api\/team(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"] },
   // Milestones
   { pattern: /^\/api\/milestones(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT", "MENTOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT", "MENTOR"] },
-  // Artifacts/upload
-  { pattern: /^\/api\/artifacts(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT", "EVALUATOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"] },
   // Announcements
   { pattern: /^\/api\/announcements(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"] },
   // Notifications

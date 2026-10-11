@@ -1,6 +1,6 @@
 /**
  * High-performance sliding-window in-memory rate limiter.
- * Protects sensitive endpoints (Auth, File Uploads, Review Submissions) against
+ * Protects sensitive endpoints (Auth, Review Submissions) against
  * brute-force attacks, resource exhaustion, and denial of service.
  */
 
@@ -86,8 +86,6 @@ export function checkRateLimit(
 export const RATE_LIMIT_TIERS: Record<string, RateLimitConfig> = {
   // Auth endpoints (brute-force defense): 10 requests / min
   AUTH: { maxRequests: 10, windowMs: 60 * 1000 },
-  // File uploads (storage exhaustion defense): 15 requests / min
-  UPLOAD: { maxRequests: 15, windowMs: 60 * 1000 },
   // Evaluator scoring (high burst capacity): 60 requests / min
   EVALUATOR: { maxRequests: 60, windowMs: 60 * 1000 },
   // General queries: 200 requests / min

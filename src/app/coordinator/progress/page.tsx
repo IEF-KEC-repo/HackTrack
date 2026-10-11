@@ -45,23 +45,21 @@ interface CohortTeamItem {
     status: string;
     dueDate: string;
     isOverdue: boolean;
-    evidenceType?: string;
     evidenceUrl?: string;
   }>;
 }
 
-interface EventUploadStatus {
+interface EventStage {
   id: string;
   name: string;
   slug: string;
   sequenceIndex: number;
   status: string;
-  uploadsEnabled: boolean;
 }
 
 interface CohortResponse {
   edition: { id: string; name: string; slug: string };
-  events: EventUploadStatus[];
+  events: EventStage[];
   availableMentors: MentorOption[];
   cohortTeams: CohortTeamItem[];
 }
@@ -83,7 +81,7 @@ export default function CoordinatorProgressPage() {
   // Remote Data
   const [loading, setLoading] = useState(true);
   const [editionId, setEditionId] = useState("");
-  const [events, setEvents] = useState<EventUploadStatus[]>([]);
+  const [events, setEvents] = useState<EventStage[]>([]);
   const [mentors, setMentors] = useState<MentorOption[]>([]);
   const [teams, setTeams] = useState<CohortTeamItem[]>([]);
 
@@ -133,40 +131,6 @@ export default function CoordinatorProgressPage() {
   useEffect(() => {
     loadCohort();
   }, [loadCohort]);
-
-  // Toggle Uploads Handler (FR-5b)
-  const handleToggleUploads = async (eventId: string, currentVal: boolean) => {
-    if (isReadOnly) return;
-    const ev = events.find((e) => e.id === eventId);
-    const nextVal = !currentVal;
-
-    try {
-      const res = await fetch("/api/coordinator/progress/toggle-uploads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId, uploadsEnabled: nextVal }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setNotification({
-          type: "error",
-          msg: data?.error || "Failed to update event upload permissions.",
-        });
-        return;
-      }
-
-      setNotification({
-        type: "success",
-        msg:
-          data?.message ||
-          `File uploads ${nextVal ? "ENABLED" : "DISABLED"} for ${ev?.name ?? "event"}. When enabled, student uploads are renamed to team code.`,
-      });
-      await loadCohort();
-    } catch {
-      setNotification({ type: "error", msg: "Failed to update event upload permissions." });
-    }
-  };
 
   // Define Mandatory Milestone Handler
   const handleDefineMilestone = async (e: React.FormEvent) => {
@@ -315,7 +279,7 @@ export default function CoordinatorProgressPage() {
   return (
     <CoordinatorShell
       title="Cohort Milestone Progress & Mentorship Governance"
-      description="Monitor mandatory deliverable completion, manage event file upload permissions (FR-5b), and assign faculty mentors."
+      description="Monitor mandatory deliverable completion and assign faculty mentors."
       action={
         <div className="flex gap-2">
           <ActionButton
@@ -393,54 +357,6 @@ export default function CoordinatorProgressPage() {
                 <p className="text-xs text-slate-400">
                   {unassignedMentorsCount > 0 ? `${unassignedMentorsCount} team(s) need mentor assignment.` : "100% paired with mentors."}
                 </p>
-              </div>
-            </div>
-
-            {/* Event File Upload Governance Card (FR-5b) */}
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3 gap-2">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">Event File Upload Governance (FR-5b)</h2>
-                  <p className="text-xs text-slate-500">
-                    Control which event stages allow student attachments. When enabled, files are automatically renamed server-side to the team registration code.
-                  </p>
-                </div>
-                <Badge variant="purple">Server-Side Renaming Active</Badge>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-                {events.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className={`p-3 rounded-lg border text-center space-y-2 transition-colors ${
-                      ev.uploadsEnabled
-                        ? "bg-emerald-50/70 border-emerald-300"
-                        : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
-                    <div>
-                      <span className="text-[11px] font-mono text-slate-400 block font-semibold">
-                        Stage {ev.sequenceIndex}
-                      </span>
-                      <p className="text-xs font-bold text-slate-900 truncate">{ev.name}</p>
-                    </div>
-
-                    <Badge variant={ev.uploadsEnabled ? "success" : "default"}>
-                      {ev.uploadsEnabled ? "Uploads Enabled" : "Uploads Disabled"}
-                    </Badge>
-
-                    <div>
-                      <ActionButton
-                        size="sm"
-                        variant={ev.uploadsEnabled ? "outline" : "secondary"}
-                        onClick={() => handleToggleUploads(ev.id, ev.uploadsEnabled)}
-                        viewOnlyMessage="Modifying event upload permissions requires Coordinator Manage tier."
-                      >
-                        {ev.uploadsEnabled ? "Disable" : "Enable"}
-                      </ActionButton>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
 

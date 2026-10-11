@@ -260,18 +260,6 @@ async function main() {
           { userId: teamMember.id, role: TeamRole.MEMBER },
         ],
       },
-      artifacts: {
-        create: [
-          {
-            fileType: "REPORT_PDF",
-            originalName: "QuantumForge Proposal.pdf",
-            storedName: "HT26-T001_QuantumForge_Proposal.pdf",
-            fileUrl: "/uploads/ht26/HT26-T001_QuantumForge_Proposal.pdf",
-            fileSize: 1048576,
-            mimeType: "application/pdf",
-          },
-        ],
-      },
     },
   });
 

@@ -12,7 +12,7 @@
 | :-: | :--- | :--- | :--- | :--- |
 | **D-01** | **Score Normalization Algorithm** | 1. Z-Score Standardization<br>2. Min-Max Scaling<br>3. Median Shift / Quantile Matching | **Option 1: Z-Score Standardization with Cohort Scaling** | Corrects for both evaluator mean shift (harshness) and variance spread (tight vs loose graders). Scaled to $S_{\text{norm}} = 70 + Z \times 15$, clamped [0, 100]. |
 | **D-02** | **Google Slides Embed & Permission Fallbacks** | 1. Pure `<iframe>` embed with regex URL transform<br>2. Server-side Google Drive API metadata check<br>3. Headless Chrome screenshot generation | **Option 1: URL Transform to `/embed` with client-side detection** | Zero API rate limits or Google Service Account quota bottlenecks; instantly converts shareable links to embeddable presentations; displays clear permission guidance if unviewable. |
-| **D-03** | **Secondary File Uploads & Renaming Pipeline** | 1. Local disk with Node stream renaming<br>2. Cloud Object Storage (S3 / Cloudflare R2) via presigned upload with server-side renaming<br>3. Direct Next.js Route Handler buffer processing | **Option 2: Cloudflare R2 / S3 via Presigned URL with Server-Side Key Generation** | Offloads multi-part upload bandwidth from Next.js server, generates deterministic key `{edition}/{regCode}_{sanitizedFilename}`, and scales smoothly to 300+ simultaneous uploads. |
+| **D-03** | **Secondary File Uploads & Renaming Pipeline** | 1. Local disk with Node stream renaming<br>2. Cloud Object Storage (S3 / Cloudflare R2) via presigned upload with server-side renaming<br>3. Direct Next.js Route Handler buffer processing | **Removed (scope cut)** | Only the Google Slides link is supported. No local/object storage and no server-side renaming pipeline: the `Artifact` table, upload endpoint, and magic-byte validation were removed. |
 | **D-04** | **Authentication & College Domain Restriction** | 1. Google OAuth restricted to `@college.edu`<br>2. Email Magic Links (NextAuth Resend)<br>3. Hybrid: Google OAuth for Students + Credentials/Magic Link for external Evaluators | **Option 3: Hybrid (Google OAuth + Evaluator Magic Link / Invite Code)** | Guarantees students use official college accounts while allowing alumni and industry judges (external domains) to evaluate without creating college accounts. |
 | **D-05** | **Evaluator Cockpit Screen Real-Estate** | 1. 50/50 Fixed Split Screen<br>2. Resizable Split-Pane (Pane Resizer)<br>3. Multi-window / tab popouts | **Option 2: Resizable Split-Pane (`react-resizable-panels`) with Mobile Tabs** | Provides optimal ergonomic flexibility for judges on different laptop screen sizes (13" to 27"), collapsing to accessible tabs on tablets/smartphones. |
 | **D-06** | **Review Anonymity Model** | 1. Fully Open (Teams & Reviewers see each other)<br>2. Single-Blind (Reviewers see team name; teams don't see reviewer)<br>3. Double-Blind (Reviewers only see Registration Code & Deck; no student names) | **Option 3 for Ideathon (Double-Blind), Option 2 for Live Panels** | Guarantees unbiased scoring during Ideathon where 300 ideas are evaluated at scale; live panels at Innovatz/Demo Day naturally require interactive verbal defense. |
@@ -55,15 +55,5 @@ export function getEmbeddableSlidesUrl(inputUrl: string): string | null {
 ```
 This guarantees an embed-optimized, distraction-free player inside the evaluator interface.
 
-### D-03: Standardized File Renaming Convention
-When supporting files (e.g. system design diagrams, research documents, source code archives) are uploaded, the server-side pipeline executes:
-```typescript
-export function generateStandardArtifactFilename(regCode: string, originalFilename: string): string {
-  const ext = originalFilename.split('.').pop()?.toLowerCase() || 'bin';
-  const rawBase = originalFilename.substring(0, originalFilename.lastIndexOf('.')) || originalFilename;
-  const sanitizedBase = rawBase.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 50);
-  return `${regCode}_${sanitizedBase}.${ext}`;
-}
-// Example: "HT26-T042" + "System Architecture v2.final.pdf" -> "HT26-T042_System_Architecture_v2_final.pdf"
-```
-This guarantees uniform, non-colliding file records across all cloud and local storage systems.
+### D-03: Standardized File Renaming Convention — REMOVED
+Secondary file uploads were cut from scope. Only the Google Slides link is supported, so there is no server-side file-renaming pipeline and no object storage. This entry is retained for historical context.

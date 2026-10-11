@@ -9,7 +9,7 @@ This runbook provides the standard operating procedures for provisioning, deploy
 - **Runtime**: Node.js 18.18+ or Node.js 20 LTS
 - **Database**: PostgreSQL 14+ (Managed AWS RDS, Supabase, or on-premise college cluster)
 - **Minimum Compute**: 2 vCPU, 4GB RAM (Supports 1,000+ concurrent participants and 300 teams)
-- **Persistent Storage**: Local SSD or S3-compatible storage mounted for file uploads (`/uploads`)
+- **Persistent Storage**: None required. The platform stores no uploaded files; decks are shared as external Google Slides links.
 
 ---
 
@@ -25,10 +25,6 @@ NEXTAUTH_SECRET=generate_strong_64_char_hex_secret
 
 # Database
 DATABASE_URL=postgresql://hacktrack_app:STRONG_PASSWORD@db.college.edu:5432/hacktrack_prod?schema=public&sslmode=require
-
-# Storage
-UPLOAD_STORAGE_PATH=/var/data/hacktrack/uploads
-MAX_FILE_SIZE_MB=25
 
 # Email & Notifications (Optional SMTP)
 SMTP_HOST=smtp.college.edu

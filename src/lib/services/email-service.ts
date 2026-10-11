@@ -95,7 +95,7 @@ export function renderEmailTemplate(
     // ----------------------------------------------------
     case "MILESTONE_DUE_SOON": {
       const subject = `⏰ Reminder: Milestone Due in 48 Hours — ${data.milestoneTitle || "Milestone"}`;
-      const text = `Hello ${data.recipientName},\n\nYour milestone "${data.milestoneTitle}" for team "${data.teamName}" is due soon (${data.dueDate || "within 48 hours"}).\n\nPlease submit your proof of work or artifacts before the deadline.\n\nView milestone: ${actionHref}\n\n— ${brandName}`;
+      const text = `Hello ${data.recipientName},\n\nYour milestone "${data.milestoneTitle}" for team "${data.teamName}" is due soon (${data.dueDate || "within 48 hours"}).\n\nPlease submit your proof of work before the deadline.\n\nView milestone: ${actionHref}\n\n— ${brandName}`;
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b;">
           <h2 style="color: #1e293b; margin-top: 0;">⏰ Milestone Due in 48 Hours</h2>
@@ -123,7 +123,7 @@ export function renderEmailTemplate(
     // ----------------------------------------------------
     case "MILESTONE_OVERDUE": {
       const subject = `🚨 OVERDUE: Deliverable Past Deadline — ${data.milestoneTitle || "Milestone"}`;
-      const text = `Hello ${data.recipientName},\n\nThe milestone "${data.milestoneTitle}" for team "${data.teamName}" is now ${data.daysOverdue ? `${data.daysOverdue} days ` : ""}overdue.\n\nPlease upload your deliverables immediately to maintain milestone velocity.\n\nReview deliverable: ${actionHref}\n\n— ${brandName}`;
+      const text = `Hello ${data.recipientName},\n\nThe milestone "${data.milestoneTitle}" for team "${data.teamName}" is now ${data.daysOverdue ? `${data.daysOverdue} days ` : ""}overdue.\n\nPlease attach your evidence link immediately to maintain milestone velocity.\n\nReview deliverable: ${actionHref}\n\n— ${brandName}`;
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b;">
           <div style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 20px;">
@@ -137,7 +137,7 @@ export function renderEmailTemplate(
           </div>
           <p style="text-align: center; margin: 28px 0;">
             <a href="${actionHref}" style="background-color: #be123c; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-block;">
-              Upload Overdue Milestone
+              Review Overdue Milestone
             </a>
           </p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />

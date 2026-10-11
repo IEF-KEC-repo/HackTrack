@@ -20,7 +20,7 @@ This document provides the formal User Acceptance Testing (UAT) scripts for the 
 ## 2. UAT Script 1: Participant Team Registration, Deck Ingestion & Milestone Evidence
 
 **Persona**: `PARTICIPANT` (Team Lead & Members)  
-**Objective**: Verify team creation, member invitation within capacity (1–6), Google Slides verification, and upload renaming.
+**Objective**: Verify team creation, member invitation within capacity (1–6), and Google Slides verification.
 
 | Step | Action | Expected Result |
 | :--- | :--- | :--- |
@@ -30,7 +30,7 @@ This document provides the formal User Acceptance Testing (UAT) scripts for the 
 | **1.4** | Attempt to invite a 7th member after 6 slots are claimed. | System blocks action with error: *"Team roster limit reached (maximum 6 members allowed)."* |
 | **1.5** | Paste valid Google Slides shareable URL: `https://docs.google.com/presentation/d/.../edit?usp=sharing`. | System validates link and generates sandboxed embed URL. Green "Verified Public" badge appears. |
 | **1.6** | Paste an invalid URL (e.g. Dropbox link or raw Google Drive folder). | Validation fails with clear format requirement error message. |
-| **1.7** | Upload milestone evidence PDF `architecture_v1.pdf`. | Server sanitizes and stores file as `HT26-T001_architecture_v1_<timestamp>.pdf`. |
+| **1.7** | Attach milestone evidence link (e.g. GitHub commit or Figma design). | Milestone is marked completed and the evidence link is stored and displayed. |
 
 ---
 
@@ -44,7 +44,7 @@ This document provides the formal User Acceptance Testing (UAT) scripts for the 
 | **Stage 1: Ideathon** | 3 Evaluators complete double-blind scoring. Coordinator Manage records `CONTINUE`. | Team advances to Stage 2. Stepper displays "Stage 1: Completed ✅". Team score: 92.45. |
 | **Stage 2: Innovatz** | Panel evaluation concludes. Coordinator Manage records `CONTINUE`. | Team advances to Stage 3 (CPR 1). Stepper updates. |
 | **Stage 3: CPR 1** | Team submits architecture deliverable. Coordinator records `CONDITIONAL` with note: *"Must submit hardware BOM and bench latency report before CPR 2."* | Team receives Amber Alert on `/team/progress` detailing mandatory condition notes. Stepper reflects Conditional status. |
-| **Stage 4: CPR 2** | Team uploads required hardware BOM. Coordinator verifies and records `CONTINUE`. | Conditional status clears. Team clears mid-point stress review. |
+| **Stage 4: CPR 2** | Team attaches the required hardware BOM link. Coordinator verifies and records `CONTINUE`. | Conditional status clears. Team clears mid-point stress review. |
 | **Stage 5: POC** | Working prototype video link verified. Coordinator records `CONTINUE`. | Team qualifies as Demo Day Finalist. |
 | **Stage 6: Demo Day** | Final live jury panel scores team. Leaderboard is published. | Team places #1 Champion on Gold Podium. Official standing displays on `/results`. |
 

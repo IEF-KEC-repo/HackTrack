@@ -108,7 +108,7 @@ export default function BulkCsvImportPage() {
         {/* CSV Input Area */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">Paste or Upload CSV Data</h2>
+            <h2 className="text-base font-bold text-slate-900">Paste CSV Data</h2>
             <span className="text-xs text-slate-500">
               Columns: email, name, role (PARTICIPANT, MENTOR, EVALUATOR, COORDINATOR_VIEW, COORDINATOR_MANAGE)
             </span>
