@@ -38,6 +38,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Team not found." }, { status: 404 });
     }
 
+    // RBAC: participants may only attach files to their OWN team. Coordinators
+    // and super admins may attach on behalf of any team. Without this check any
+    // authenticated participant could write artifacts against an arbitrary teamId.
+    const isPrivileged =
+      session.globalRole === "SUPER_ADMIN" ||
+      session.editionRole === "SUPER_ADMIN" ||
+      session.editionRole === "COORDINATOR_MANAGE" ||
+      session.editionRole === "COORDINATOR_VIEW";
+
+    if (!isPrivileged) {
+      const membership = await prisma.teamMember.findFirst({
+        where: { teamId: team.id, userId: session.userId },
+        select: { id: true },
+      });
+      if (!membership) {
+        return NextResponse.json(
+          {
+            error: "You can only attach files to a team you are a member of.",
+            code: "TEAM_MEMBERSHIP_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // 2. Check Event Upload Toggle
     let uploadsEnabled = true; // default true if not attached to a locked event
     if (eventId) {
