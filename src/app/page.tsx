@@ -92,6 +92,92 @@ function statusTone(status: string): string {
 }
 
 // ------------------------------------------------------------
+// Organizers — IEF@KEC team (two tiers: faculty + students)
+// ------------------------------------------------------------
+const ORGANIZER_TIERS: {
+  heading: string;
+  people: { name: string; role: string; rollNo?: string }[];
+}[] = [
+  {
+    heading: "Faculty Coordinators",
+    people: [
+      {
+        name: "Dr. S. Praveen Kumar",
+        role: "ASP/MTS · President, IIC & Coordinator, AICTE IDEA Lab",
+      },
+      {
+        name: "Ms. K. Karthika",
+        role: "AP/CT-PG · Vice President, IIC & Coordinator, YUKTI NIR",
+      },
+    ],
+  },
+  {
+    heading: "Student Team",
+    people: [
+      { name: "Kavin S M A", rollNo: "25MTR030", role: "Chairman, IEF" },
+      { name: "Dheepesh K", rollNo: "25MTR021", role: "Chairman, AICTE IDEA Lab" },
+      { name: "Saran B", rollNo: "25EIR098", role: "Convenor, S&H" },
+      { name: "Abinaya M S", rollNo: "25CDR003", role: "Co-Convenor, S&H" },
+    ],
+  },
+];
+
+// Logo strip. Files are served from `public/logos/<file>` at the paths below.
+// Expected filenames (drop the real files in `public/logos/`):
+//   public/logos/iic.png       -> /logos/iic.png
+//   public/logos/emdc.png      -> /logos/emdc.png
+//   public/logos/idea-lab.png  -> /logos/idea-lab.png
+//   public/logos/tbi.png       -> /logos/tbi.png
+//   public/logos/kec.png       -> /logos/kec.png
+const ORGANIZER_LOGOS = [
+  { src: "/logos/iic.png", alt: "IIC logo", label: "IIC" },
+  { src: "/logos/emdc.png", alt: "EMDC logo", label: "EMDC" },
+  { src: "/logos/idea-lab.png", alt: "IDEA Lab logo", label: "IDEA Lab" },
+  { src: "/logos/tbi.png", alt: "TBI logo", label: "TBI" },
+  { src: "/logos/kec.png", alt: "KEC logo", label: "KEC" },
+];
+
+/**
+ * Renders a single organizer logo. Until the real image file exists at `src`,
+ * the browser fires `onError` and we fall back to a labelled placeholder box
+ * so a missing asset never shows a broken-image icon.
+ */
+function OrganizerLogo({
+  src,
+  alt,
+  label,
+}: {
+  src: string;
+  alt: string;
+  label: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <span
+        role="img"
+        aria-label={alt}
+        title={alt}
+        className="flex h-14 min-w-[88px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold uppercase tracking-wide text-slate-400"
+      >
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="h-14 w-auto object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// ------------------------------------------------------------
 // Homepage
 // ------------------------------------------------------------
 export default function HomePage() {
@@ -511,39 +597,56 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="mx-auto mt-12 grid max-w-4xl gap-6 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50 p-8 text-center">
-                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md">
-                  <GraduationCap className="h-7 w-7" aria-hidden="true" />
-                </span>
-                <h3 className="mt-5 text-lg font-black text-slate-900">
-                  Faculty Coordinator
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Program stewardship, academic liaison, and mentorship of the
-                  student leadership team.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-8 text-center">
-                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-md">
-                  <Users className="h-7 w-7" aria-hidden="true" />
-                </span>
-                <h3 className="mt-5 text-lg font-black text-slate-900">
-                  Student Lead
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Day-to-day operations, stage execution, and the core team of
-                  event captains behind each gate.
-                </p>
-              </div>
+            <div className="mx-auto mt-12 max-w-5xl space-y-12">
+              {ORGANIZER_TIERS.map((tier) => (
+                <div key={tier.heading}>
+                  <h3 className="text-center text-sm font-bold uppercase tracking-widest text-slate-500">
+                    {tier.heading}
+                  </h3>
+                  <div
+                    className={`mt-5 grid gap-6 ${
+                      tier.people.length === 2
+                        ? "sm:grid-cols-2"
+                        : "sm:grid-cols-2 lg:grid-cols-4"
+                    }`}
+                  >
+                    {tier.people.map((person) => (
+                      <div
+                        key={person.name}
+                        className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50 p-6 text-center shadow-sm"
+                      >
+                        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md">
+                          <GraduationCap className="h-6 w-6" aria-hidden="true" />
+                        </span>
+                        <h4 className="mt-4 text-base font-black text-slate-900">
+                          {person.name}
+                        </h4>
+                        {person.rollNo && (
+                          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                            {person.rollNo}
+                          </p>
+                        )}
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                          {person.role}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mx-auto mt-12 flex max-w-4xl flex-wrap items-center justify-center gap-x-10 gap-y-6">
+              {ORGANIZER_LOGOS.map((logo) => (
+                <OrganizerLogo key={logo.src} {...logo} />
+              ))}
             </div>
 
             <div className="mx-auto mt-10 flex max-w-4xl items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-6">
               <Building2 className="h-6 w-6 text-indigo-600" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-700">
-                Kongu Engineering College · Perundurai, Erode — Innovation and
-                Entrepreneurship Forum (IEF), Cell for Innovation and
-                Entrepreneurship Development.
+                Organized by IEF@KEC — the Innovation and Entrepreneurship
+                Forum, Kongu Engineering College · Perundurai, Erode.
               </p>
             </div>
           </div>
@@ -618,9 +721,15 @@ export default function HomePage() {
               </a>
               <p className="mt-4 text-sm text-slate-400">
                 Innovation and Entrepreneurship Forum (IEF@KEC), Kongu
-                Engineering College. For participant queries contact the
-                IEF@KEC student coordinators at the Innovation and
-                Entrepreneurship Development Cell.
+                Engineering College. For participant queries, contact the
+                IEF@KEC team at{" "}
+                <a
+                  href="mailto:iickec@kongu.edu"
+                  className="font-semibold text-indigo-300 underline-offset-2 hover:text-white hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  iickec@kongu.edu
+                </a>
+                .
               </p>
             </div>
 
