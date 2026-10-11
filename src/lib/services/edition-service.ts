@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { ReviewType, EventStatus, EditionStatus } from "@prisma/client";
 import { recordAuditLog } from "./audit-service";
 
+// Interactive transactions against the remote pooled PostgreSQL (Supabase) can
+// exceed Prisma's 5s default when updating many rows on serverless cold paths.
+const TX_OPTS = { timeout: 30000, maxWait: 15000 };
+
 export interface CloneEditionParams {
   sourceSlug: string;
   newName: string;
@@ -105,10 +109,10 @@ export async function cloneEdition(params: CloneEditionParams) {
       entityId: newEdition.id,
       previousState: { clonedFromSlug: params.sourceSlug },
       newState: newEdition,
-    });
+    }, tx);
 
     return newEdition;
-  });
+  }, TX_OPTS);
 }
 
 /**
@@ -207,13 +211,13 @@ export async function setContinuousProjectReviewCount(params: {
       entityId: editionId,
       previousState: { previousCprCount: currentCprCount },
       newState: { newCprCount: cprCount },
-    });
+    }, tx);
 
     return tx.event.findMany({
       where: { editionId },
       orderBy: { sequenceIndex: "asc" },
     });
-  });
+  }, TX_OPTS);
 }
 
 /**
@@ -270,8 +274,8 @@ export async function updateEventSequence(params: {
       entityId: editionId,
       previousState: existingEvents,
       newState: updatedEvents,
-    });
+    }, tx);
 
     return updatedEvents;
-  });
+  }, TX_OPTS);
 }

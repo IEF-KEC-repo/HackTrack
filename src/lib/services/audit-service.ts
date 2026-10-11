@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 export interface CreateAuditLogParams {
   editionId?: string;
@@ -15,9 +16,12 @@ export interface CreateAuditLogParams {
 /**
  * Persists an immutable audit log entry for any critical state or configuration mutation.
  */
-export async function recordAuditLog(params: CreateAuditLogParams) {
+export async function recordAuditLog(
+  params: CreateAuditLogParams,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+) {
   try {
-    return await prisma.auditLog.create({
+    return await client.auditLog.create({
       data: {
         editionId: params.editionId,
         actorId: params.actorId,
