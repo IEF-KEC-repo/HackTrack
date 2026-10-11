@@ -226,6 +226,29 @@ async function main() {
     ).filter((u) => VERIFY_EMAIL_REGEX.test(u.email)).length,
     totalUsersRemaining: await prisma.user.count(),
     membershipsRemaining: await prisma.editionMembership.count({ where: { editionId } }),
+    allTeams: (
+      await prisma.team.findMany({
+        where: { editionId },
+        select: {
+          regCode: true,
+          name: true,
+          status: true,
+          createdAt: true,
+          members: { select: { user: { select: { email: true } } } },
+        },
+        orderBy: { regCode: "asc" },
+      })
+    ).map((t) => ({
+      regCode: t.regCode,
+      name: t.name,
+      status: t.status,
+      createdAt: t.createdAt,
+      members: t.members.map((m) => m.user.email),
+    })),
+    allUsers: await prisma.user.findMany({
+      select: { email: true, globalRole: true },
+      orderBy: { email: "asc" },
+    }),
   };
 
   console.log("=== TEST-ACCOUNTS-CLEANUP RESULT BEGIN ===");
