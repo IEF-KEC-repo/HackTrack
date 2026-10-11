@@ -95,6 +95,48 @@ export async function GET(
         };
       });
 
+      // Enrich evaluator calibration stats with names so the coordinator
+      // console renders real people instead of bare IDs.
+      const evaluatorNameById = new Map<string, string>(
+        event.evaluations.map((e) => [e.evaluatorId, e.evaluator.name])
+      );
+      const enrichedEvaluatorStats = Object.values(normResult.evaluatorStats).map((s) => ({
+        ...s,
+        name: evaluatorNameById.get(s.evaluatorId) || s.evaluatorId,
+        email: null,
+        isCalibrated: event.evaluations.some(
+          (e) => e.evaluatorId === s.evaluatorId && e.isCalibration
+        ),
+      }));
+
+      // Calibration benchmark samples come from real evaluations flagged as
+      // calibration-runs. Empty when none have been run yet — never fabricated.
+      const calibrationEvals = event.evaluations.filter((e) => e.isCalibration);
+      const calibrationByTeam = new Map<string, typeof calibrationEvals>();
+      for (const ev of calibrationEvals) {
+        const group = calibrationByTeam.get(ev.teamId) || [];
+        group.push(ev);
+        calibrationByTeam.set(ev.teamId, group);
+      }
+      const calibrationSamples = Array.from(calibrationByTeam.entries()).map(([teamId, evs]) => {
+        const scores = evs.map((e) => e.rawTotalScore || 0);
+        const mean = scores.reduce((a, b) => a + b, 0) / Math.max(scores.length, 1);
+        const spread = scores.length > 0 ? [Math.min(...scores), Math.max(...scores)] : [0, 0];
+        const variance =
+          scores.length > 0
+            ? Math.sqrt(scores.reduce((acc, s) => acc + (s - mean) ** 2, 0) / scores.length)
+            : 0;
+        const allSubmitted = evs.every((e) => e.status === "SUBMITTED");
+        return {
+          id: `cal_${teamId}`,
+          title: `Sample: ${evs[0]?.team.name || teamId}`,
+          groundTruthScore: Math.round(mean * 10) / 10,
+          evaluatorSpread: `${spread[0]} - ${spread[1]}`,
+          status: allSubmitted ? "COMPLETED" : "IN_PROGRESS",
+          varianceScore: Math.round(variance * 100) / 100,
+        };
+      });
+
       const totalAssigned = event.evaluations.length;
       const totalSubmitted = event.evaluations.filter((e) => e.status === "SUBMITTED").length;
 
@@ -109,8 +151,9 @@ export async function GET(
           isCalibrationActive: event.isCalibrationActive,
         },
         primaryCriterion: primaryCriterion?.title || "Composite",
-        evaluatorStats: normResult.evaluatorStats,
+        evaluatorStats: enrichedEvaluatorStats,
         rankedTeams: enrichedRankedTeams,
+        calibrationSamples,
         summary: {
           totalAssigned,
           totalSubmitted,

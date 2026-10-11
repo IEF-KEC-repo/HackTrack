@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { CoordinatorShell, useCoordinator } from "@/components/coordinator/CoordinatorShell";
 import { ActionButton } from "@/components/coordinator/ActionButton";
 import { Button } from "@/components/ui/Button";
@@ -9,11 +9,17 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 
+interface MentorOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
 interface CohortTeamItem {
   id: string;
   regCode: string;
   name: string;
-  track: string;
+  track: string | null;
   status: string;
   mentor: { id: string; name: string; email: string } | null;
   progress: {
@@ -32,7 +38,7 @@ interface CohortTeamItem {
     meetingDate: string;
     health: "GREEN" | "YELLOW" | "RED";
     notes?: string;
-  };
+  } | null;
   milestones: Array<{
     id: string;
     title: string;
@@ -53,8 +59,15 @@ interface EventUploadStatus {
   uploadsEnabled: boolean;
 }
 
+interface CohortResponse {
+  edition: { id: string; name: string; slug: string };
+  events: EventUploadStatus[];
+  availableMentors: MentorOption[];
+  cohortTeams: CohortTeamItem[];
+}
+
 export default function CoordinatorProgressPage() {
-  const { isReadOnly } = useCoordinator();
+  const { isReadOnly, editionSlug } = useCoordinator();
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,81 +80,16 @@ export default function CoordinatorProgressPage() {
     null
   );
 
-  // Event Upload Toggles (FR-5b)
-  const [events, setEvents] = useState<EventUploadStatus[]>([
-    { id: "ev_1", name: "Ideathon", slug: "ideathon", sequenceIndex: 1, status: "EVALUATION_ACTIVE", uploadsEnabled: false },
-    { id: "ev_2", name: "Innovatz", slug: "innovatz", sequenceIndex: 2, status: "UPCOMING", uploadsEnabled: false },
-    { id: "ev_3", name: "CPR 1", slug: "cpr-1", sequenceIndex: 3, status: "UPCOMING", uploadsEnabled: true },
-    { id: "ev_4", name: "CPR 2", slug: "cpr-2", sequenceIndex: 4, status: "UPCOMING", uploadsEnabled: true },
-    { id: "ev_5", name: "CPR 3", slug: "cpr-3", sequenceIndex: 5, status: "UPCOMING", uploadsEnabled: true },
-    { id: "ev_6", name: "POC Review", slug: "poc", sequenceIndex: 6, status: "UPCOMING", uploadsEnabled: true },
-    { id: "ev_7", name: "Demo Day", slug: "demo-day", sequenceIndex: 7, status: "UPCOMING", uploadsEnabled: true },
-  ]);
-
-  // Available Mentors
-  const [mentors] = useState([
-    { id: "m_1", name: "Prof. Alan Turing", email: "mentor@hacktrack.edu" },
-    { id: "m_2", name: "Dr. Claude Shannon", email: "shannon@hacktrack.edu" },
-    { id: "m_3", name: "Prof. Ada Lovelace", email: "lovelace@hacktrack.edu" },
-  ]);
-
-  // Cohort Teams State
-  const [teams, setTeams] = useState<CohortTeamItem[]>([
-    {
-      id: "t_1",
-      regCode: "HT26-T001",
-      name: "QuantumForge",
-      track: "AI/ML & Edge Computing",
-      status: "SUBMITTED",
-      mentor: { id: "m_1", name: "Prof. Alan Turing", email: "mentor@hacktrack.edu" },
-      progress: { mandatoryTotal: 4, mandatoryCompleted: 2, mandatoryProgressPercent: 50.0 },
-      overdueCount: 1,
-      currentHealth: "GREEN",
-      cadence: { daysSinceLastCheckIn: 12, status: "CHECKIN_DUE", message: "Check-in due in 2 days" },
-      latestCheckIn: { meetingDate: "2026-08-14", health: "GREEN", notes: "Strong algorithmic kernel." },
-      milestones: [
-        { id: "m_1", title: "Problem Statement Survey", status: "COMPLETED", dueDate: "2026-08-10", isOverdue: false },
-        { id: "m_2", title: "Detailed Architecture & BOM", status: "IN_PROGRESS", dueDate: "2026-08-18", isOverdue: true },
-      ],
-    },
-    {
-      id: "t_2",
-      regCode: "HT26-T002",
-      name: "BioSynth AI",
-      track: "Healthtech & Bio",
-      status: "SHORTLISTED",
-      mentor: { id: "m_2", name: "Dr. Claude Shannon", email: "shannon@hacktrack.edu" },
-      progress: { mandatoryTotal: 4, mandatoryCompleted: 3, mandatoryProgressPercent: 75.0 },
-      overdueCount: 0,
-      currentHealth: "GREEN",
-      cadence: { daysSinceLastCheckIn: 6, status: "ON_TRACK", message: "Check-in on track." },
-      latestCheckIn: { meetingDate: "2026-08-20", health: "GREEN", notes: "Validated protein sequence data." },
-      milestones: [
-        { id: "m_1", title: "Problem Statement Survey", status: "COMPLETED", dueDate: "2026-08-10", isOverdue: false },
-        { id: "m_2", title: "Detailed Architecture & BOM", status: "COMPLETED", dueDate: "2026-08-18", isOverdue: false },
-      ],
-    },
-    {
-      id: "t_3",
-      regCode: "HT26-T003",
-      name: "SolShield",
-      track: "Fintech & Security",
-      status: "SUBMITTED",
-      mentor: null, // Unassigned
-      progress: { mandatoryTotal: 4, mandatoryCompleted: 1, mandatoryProgressPercent: 25.0 },
-      overdueCount: 2,
-      currentHealth: "RED",
-      cadence: { daysSinceLastCheckIn: null, status: "CHECKIN_OVERDUE", message: "No check-in logged." },
-      milestones: [
-        { id: "m_1", title: "Problem Statement Survey", status: "COMPLETED", dueDate: "2026-08-10", isOverdue: false },
-        { id: "m_2", title: "Detailed Architecture & BOM", status: "BLOCKED", dueDate: "2026-08-18", isOverdue: true },
-      ],
-    },
-  ]);
+  // Remote Data
+  const [loading, setLoading] = useState(true);
+  const [editionId, setEditionId] = useState("");
+  const [events, setEvents] = useState<EventUploadStatus[]>([]);
+  const [mentors, setMentors] = useState<MentorOption[]>([]);
+  const [teams, setTeams] = useState<CohortTeamItem[]>([]);
 
   // Define Milestone Modal State
   const [isDefineModalOpen, setIsDefineModalOpen] = useState(false);
-  const [selectedEventId, setSelectedEventId] = useState(events[2]?.id || "");
+  const [selectedEventId, setSelectedEventId] = useState("");
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [newMilestoneDesc, setNewMilestoneDesc] = useState("");
   const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
@@ -153,109 +101,190 @@ export default function CoordinatorProgressPage() {
   // Inspect Modal State
   const [inspectTeam, setInspectTeam] = useState<CohortTeamItem | null>(null);
 
+  // Load cohort progress, events, mentors & teams from the API
+  const loadCohort = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/coordinator/progress/cohort?edition=${editionSlug || "ht26"}`);
+      const data: Partial<CohortResponse> & { error?: string } = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok || data.error) {
+        setNotification({
+          type: "error",
+          msg: data.error || "Failed to load cohort progress data.",
+        });
+        return;
+      }
+
+      setEditionId(data.edition?.id || "");
+      setEvents(data.events || []);
+      setMentors(data.availableMentors || []);
+      setTeams(data.cohortTeams || []);
+      setSelectedEventId((prev) => prev || data.events?.[0]?.id || "");
+    } catch {
+      setNotification({ type: "error", msg: "Failed to load cohort progress data." });
+    } finally {
+      setLoading(false);
+    }
+  }, [editionSlug]);
+
+  useEffect(() => {
+    loadCohort();
+  }, [loadCohort]);
+
   // Toggle Uploads Handler (FR-5b)
-  const handleToggleUploads = (eventId: string, currentVal: boolean) => {
+  const handleToggleUploads = async (eventId: string, currentVal: boolean) => {
     if (isReadOnly) return;
-    const updated = events.map((ev) => (ev.id === eventId ? { ...ev, uploadsEnabled: !currentVal } : ev));
-    setEvents(updated);
     const ev = events.find((e) => e.id === eventId);
-    setNotification({
-      type: "success",
-      msg: `File uploads ${!currentVal ? "ENABLED" : "DISABLED"} for ${ev?.name}. When enabled, student uploads are renamed to team code.`,
-    });
+    const nextVal = !currentVal;
+
+    try {
+      const res = await fetch("/api/coordinator/progress/toggle-uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, uploadsEnabled: nextVal }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setNotification({
+          type: "error",
+          msg: data?.error || "Failed to update event upload permissions.",
+        });
+        return;
+      }
+
+      setNotification({
+        type: "success",
+        msg:
+          data?.message ||
+          `File uploads ${nextVal ? "ENABLED" : "DISABLED"} for ${ev?.name ?? "event"}. When enabled, student uploads are renamed to team code.`,
+      });
+      await loadCohort();
+    } catch {
+      setNotification({ type: "error", msg: "Failed to update event upload permissions." });
+    }
   };
 
   // Define Mandatory Milestone Handler
-  const handleDefineMilestone = (e: React.FormEvent) => {
+  const handleDefineMilestone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMilestoneTitle || !newMilestoneDueDate || isReadOnly) return;
 
-    // Propagate to all teams
-    const updatedTeams = teams.map((t) => ({
-      ...t,
-      progress: {
-        ...t.progress,
-        mandatoryTotal: t.progress.mandatoryTotal + 1,
-        mandatoryProgressPercent: Math.round(
-          (t.progress.mandatoryCompleted / (t.progress.mandatoryTotal + 1)) * 1000
-        ) / 10,
-      },
-      milestones: [
-        ...t.milestones,
-        {
-          id: `m_man_${Date.now()}`,
-          title: newMilestoneTitle,
-          status: "NOT_STARTED",
-          dueDate: newMilestoneDueDate,
-          isOverdue: new Date(newMilestoneDueDate).getTime() < Date.now(),
-        },
-      ],
-    }));
+    const title = newMilestoneTitle;
+    const description = newMilestoneDesc;
+    const dueDate = new Date(newMilestoneDueDate).toISOString();
 
-    setTeams(updatedTeams);
-    setNewMilestoneTitle("");
-    setNewMilestoneDesc("");
-    setNewMilestoneDueDate("");
-    setIsDefineModalOpen(false);
+    try {
+      const res = await fetch("/api/coordinator/progress/define-milestone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editionId,
+          eventId: selectedEventId,
+          title,
+          description,
+          dueDate,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    setNotification({
-      type: "success",
-      msg: `Mandatory milestone "${newMilestoneTitle}" created and propagated to all ${teams.length} teams in edition.`,
-    });
+      if (!res.ok) {
+        setNotification({
+          type: "error",
+          msg: data?.error || "Failed to define mandatory milestone.",
+        });
+        return;
+      }
+
+      setNewMilestoneTitle("");
+      setNewMilestoneDesc("");
+      setNewMilestoneDueDate("");
+      setIsDefineModalOpen(false);
+
+      setNotification({
+        type: "success",
+        msg: `Mandatory milestone "${title}" created and propagated to all teams in edition.`,
+      });
+      await loadCohort();
+    } catch {
+      setNotification({ type: "error", msg: "Failed to define mandatory milestone." });
+    }
   };
 
   // Assign Mentor Handler
-  const handleAssignMentor = (e: React.FormEvent) => {
+  const handleAssignMentor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignTeam || isReadOnly) return;
 
     const chosenMentor = mentors.find((m) => m.id === selectedMentorId) || null;
+    const team = assignTeam;
 
-    setTeams(
-      teams.map((t) => (t.id === assignTeam.id ? { ...t, mentor: chosenMentor } : t))
-    );
+    try {
+      const res = await fetch("/api/coordinator/progress/assign-mentor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: team.id, mentorId: selectedMentorId || null }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    setNotification({
-      type: "success",
-      msg: chosenMentor
-        ? `Assigned ${chosenMentor.name} as mentor to ${assignTeam.regCode} (${assignTeam.name}).`
-        : `Unassigned mentor from ${assignTeam.regCode}.`,
-    });
+      if (!res.ok) {
+        setNotification({
+          type: "error",
+          msg: data?.error || "Failed to update mentor assignment.",
+        });
+        return;
+      }
 
-    setAssignTeam(null);
-    setSelectedMentorId("");
+      setNotification({
+        type: "success",
+        msg: chosenMentor
+          ? `Assigned ${chosenMentor.name} as mentor to ${team.regCode} (${team.name}).`
+          : `Unassigned mentor from ${team.regCode}.`,
+      });
+
+      setAssignTeam(null);
+      setSelectedMentorId("");
+      await loadCohort();
+    } catch {
+      setNotification({ type: "error", msg: "Failed to update mentor assignment." });
+    }
   };
 
   // Run Overdue Scan
-  const handleRunAlertsScan = () => {
+  const handleRunAlertsScan = async () => {
     if (isReadOnly) return;
 
-    let overdueMilestoneCount = 0;
-    let overdueCheckInCount = 0;
-
-    const updated = teams.map((t) => {
-      const now = Date.now();
-      const updatedMilestones = t.milestones.map((m) => {
-        const isPastDue = new Date(m.dueDate).getTime() < now && m.status !== "COMPLETED";
-        if (isPastDue) overdueMilestoneCount++;
-        return { ...m, isOverdue: isPastDue };
+    try {
+      const res = await fetch("/api/coordinator/progress/run-alerts-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editionId }),
       });
+      const data = await res.json().catch(() => ({}));
 
-      const isCheckInLate = t.cadence.status === "CHECKIN_OVERDUE";
-      if (isCheckInLate) overdueCheckInCount++;
+      if (!res.ok) {
+        setNotification({
+          type: "error",
+          msg: data?.error || "Failed to run overdue alert scan.",
+        });
+        return;
+      }
 
-      return {
-        ...t,
-        overdueCount: updatedMilestones.filter((m) => m.isOverdue).length,
-        milestones: updatedMilestones,
-      };
-    });
+      const report = data?.report;
 
-    setTeams(updated);
-    setNotification({
-      type: "info",
-      msg: `Overdue scan completed: ${overdueMilestoneCount} overdue deliverables and ${overdueCheckInCount} overdue check-in teams flagged.`,
-    });
+      setNotification({
+        type: "info",
+        msg: `Overdue scan completed: ${report?.overdueMilestones ?? 0} overdue deliverables and ${
+          report?.overdueCheckInTeams ?? 0
+        } overdue check-in teams flagged.`,
+      });
+      await loadCohort();
+    } catch {
+      setNotification({ type: "error", msg: "Failed to run overdue alert scan." });
+    }
   };
 
   // Filtering
@@ -316,276 +345,284 @@ export default function CoordinatorProgressPage() {
           </Alert>
         )}
 
-        {/* Cohort KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Cohort Progress Average
-            </span>
-            <p className="text-3xl font-black text-indigo-600">{cohortAverageProgress}%</p>
-            <p className="text-xs text-slate-400">
-              {totalMandatoryCompleted} / {totalMandatorySum} total mandatory milestones delivered.
-            </p>
+        {loading ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500 shadow-sm">
+            Loading cohort progress data…
           </div>
+        ) : (
+          <>
+            {/* Cohort KPIs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Cohort Progress Average
+                </span>
+                <p className="text-3xl font-black text-indigo-600">{cohortAverageProgress}%</p>
+                <p className="text-xs text-slate-400">
+                  {totalMandatoryCompleted} / {totalMandatorySum} total mandatory milestones delivered.
+                </p>
+              </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Overdue Deliverables
-            </span>
-            <p className={`text-3xl font-black ${totalOverdueItems > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {totalOverdueItems}
-            </p>
-            <p className="text-xs text-slate-400">Milestones past due date across cohort.</p>
-          </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Overdue Deliverables
+                </span>
+                <p className={`text-3xl font-black ${totalOverdueItems > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  {totalOverdueItems}
+                </p>
+                <p className="text-xs text-slate-400">Milestones past due date across cohort.</p>
+              </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Red Flagged Teams
-            </span>
-            <p className={`text-3xl font-black ${redTeamsCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {redTeamsCount}
-            </p>
-            <p className="text-xs text-slate-400">Teams flagged as critically blocked by mentors.</p>
-          </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Red Flagged Teams
+                </span>
+                <p className={`text-3xl font-black ${redTeamsCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  {redTeamsCount}
+                </p>
+                <p className="text-xs text-slate-400">Teams flagged as critically blocked by mentors.</p>
+              </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Mentorship Coverage
-            </span>
-            <p className={`text-3xl font-black ${unassignedMentorsCount > 0 ? "text-amber-600" : "text-emerald-600"}`}>
-              {teams.length - unassignedMentorsCount} / {teams.length}
-            </p>
-            <p className="text-xs text-slate-400">
-              {unassignedMentorsCount > 0 ? `${unassignedMentorsCount} team(s) need mentor assignment.` : "100% paired with mentors."}
-            </p>
-          </div>
-        </div>
-
-        {/* Event File Upload Governance Card (FR-5b) */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3 gap-2">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Event File Upload Governance (FR-5b)</h2>
-              <p className="text-xs text-slate-500">
-                Control which event stages allow student attachments. When enabled, files are automatically renamed server-side to the team registration code.
-              </p>
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Mentorship Coverage
+                </span>
+                <p className={`text-3xl font-black ${unassignedMentorsCount > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                  {teams.length - unassignedMentorsCount} / {teams.length}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {unassignedMentorsCount > 0 ? `${unassignedMentorsCount} team(s) need mentor assignment.` : "100% paired with mentors."}
+                </p>
+              </div>
             </div>
-            <Badge variant="purple">Server-Side Renaming Active</Badge>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {events.map((ev) => (
-              <div
-                key={ev.id}
-                className={`p-3 rounded-lg border text-center space-y-2 transition-colors ${
-                  ev.uploadsEnabled
-                    ? "bg-emerald-50/70 border-emerald-300"
-                    : "bg-slate-50 border-slate-200"
-                }`}
-              >
+            {/* Event File Upload Governance Card (FR-5b) */}
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3 gap-2">
                 <div>
-                  <span className="text-[11px] font-mono text-slate-400 block font-semibold">
-                    Stage {ev.sequenceIndex}
-                  </span>
-                  <p className="text-xs font-bold text-slate-900 truncate">{ev.name}</p>
+                  <h2 className="text-base font-bold text-slate-900">Event File Upload Governance (FR-5b)</h2>
+                  <p className="text-xs text-slate-500">
+                    Control which event stages allow student attachments. When enabled, files are automatically renamed server-side to the team registration code.
+                  </p>
+                </div>
+                <Badge variant="purple">Server-Side Renaming Active</Badge>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {events.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className={`p-3 rounded-lg border text-center space-y-2 transition-colors ${
+                      ev.uploadsEnabled
+                        ? "bg-emerald-50/70 border-emerald-300"
+                        : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-[11px] font-mono text-slate-400 block font-semibold">
+                        Stage {ev.sequenceIndex}
+                      </span>
+                      <p className="text-xs font-bold text-slate-900 truncate">{ev.name}</p>
+                    </div>
+
+                    <Badge variant={ev.uploadsEnabled ? "success" : "default"}>
+                      {ev.uploadsEnabled ? "Uploads Enabled" : "Uploads Disabled"}
+                    </Badge>
+
+                    <div>
+                      <ActionButton
+                        size="sm"
+                        variant={ev.uploadsEnabled ? "outline" : "secondary"}
+                        onClick={() => handleToggleUploads(ev.id, ev.uploadsEnabled)}
+                        viewOnlyMessage="Modifying event upload permissions requires Coordinator Manage tier."
+                      >
+                        {ev.uploadsEnabled ? "Disable" : "Enable"}
+                      </ActionButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Cohort Progress Table */}
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden space-y-4">
+              <div className="border-b border-slate-200 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Cohort Team Deliverables & Standing</h2>
+                  <p className="text-xs text-slate-500">
+                    Track completion percentages, overdue items, mentor pairings, and technical health ratings.
+                  </p>
                 </div>
 
-                <Badge variant={ev.uploadsEnabled ? "success" : "default"}>
-                  {ev.uploadsEnabled ? "Uploads Enabled" : "Uploads Disabled"}
-                </Badge>
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search team, code, mentor..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs focus:ring-1 focus:ring-indigo-600"
+                  />
 
-                <div>
-                  <ActionButton
-                    size="sm"
-                    variant={ev.uploadsEnabled ? "outline" : "secondary"}
-                    onClick={() => handleToggleUploads(ev.id, ev.uploadsEnabled)}
-                    viewOnlyMessage="Modifying event upload permissions requires Coordinator Manage tier."
+                  <select
+                    value={healthFilter}
+                    onChange={(e) => setHealthFilter(e.target.value)}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
                   >
-                    {ev.uploadsEnabled ? "Disable" : "Enable"}
-                  </ActionButton>
+                    <option value="ALL">All Health Ratings</option>
+                    <option value="GREEN">🟢 Green Only</option>
+                    <option value="YELLOW">🟡 Yellow Only</option>
+                    <option value="RED">🔴 Red Only</option>
+                  </select>
+
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={overdueOnly}
+                      onChange={(e) => setOverdueOnly(e.target.checked)}
+                      className="rounded text-indigo-600"
+                    />
+                    Overdue Only
+                  </label>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Cohort Progress Table */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden space-y-4">
-          <div className="border-b border-slate-200 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Cohort Team Deliverables & Standing</h2>
-              <p className="text-xs text-slate-500">
-                Track completion percentages, overdue items, mentor pairings, and technical health ratings.
-              </p>
-            </div>
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th scope="col" className="px-5 py-3 text-left">Team</th>
+                      <th scope="col" className="px-5 py-3 text-left">Track</th>
+                      <th scope="col" className="px-5 py-3 text-left">Assigned Mentor</th>
+                      <th scope="col" className="px-5 py-3 text-left">Health</th>
+                      <th scope="col" className="px-5 py-3 text-left">Mandatory Progress</th>
+                      <th scope="col" className="px-5 py-3 text-center">Overdue</th>
+                      <th scope="col" className="px-5 py-3 text-left">Cadence</th>
+                      <th scope="col" className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredTeams.map((team) => (
+                      <tr key={team.id} className="hover:bg-slate-50/70 transition-colors">
+                        {/* Team */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              {team.regCode}
+                            </span>
+                            <span className="font-bold text-slate-900">{team.name}</span>
+                          </div>
+                        </td>
 
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="text"
-                placeholder="Search team, code, mentor..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs focus:ring-1 focus:ring-indigo-600"
-              />
+                        {/* Track */}
+                        <td className="px-5 py-3.5 whitespace-nowrap text-slate-600 font-medium">
+                          {team.track || "—"}
+                        </td>
 
-              <select
-                value={healthFilter}
-                onChange={(e) => setHealthFilter(e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium"
-              >
-                <option value="ALL">All Health Ratings</option>
-                <option value="GREEN">🟢 Green Only</option>
-                <option value="YELLOW">🟡 Yellow Only</option>
-                <option value="RED">🔴 Red Only</option>
-              </select>
+                        {/* Mentor */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          {team.mentor ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-800">{team.mentor.name}</span>
+                              <ActionButton
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setAssignTeam(team);
+                                  setSelectedMentorId(team.mentor?.id || "");
+                                }}
+                                viewOnlyMessage="Reassigning mentors requires Coordinator Manage tier."
+                              >
+                                Edit
+                              </ActionButton>
+                            </div>
+                          ) : (
+                            <ActionButton
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setAssignTeam(team);
+                                setSelectedMentorId("");
+                              }}
+                              viewOnlyMessage="Assigning mentors requires Coordinator Manage tier."
+                            >
+                              + Assign Mentor
+                            </ActionButton>
+                          )}
+                        </td>
 
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={overdueOnly}
-                  onChange={(e) => setOverdueOnly(e.target.checked)}
-                  className="rounded text-indigo-600"
-                />
-                Overdue Only
-              </label>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th scope="col" className="px-5 py-3 text-left">Team</th>
-                  <th scope="col" className="px-5 py-3 text-left">Track</th>
-                  <th scope="col" className="px-5 py-3 text-left">Assigned Mentor</th>
-                  <th scope="col" className="px-5 py-3 text-left">Health</th>
-                  <th scope="col" className="px-5 py-3 text-left">Mandatory Progress</th>
-                  <th scope="col" className="px-5 py-3 text-center">Overdue</th>
-                  <th scope="col" className="px-5 py-3 text-left">Cadence</th>
-                  <th scope="col" className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredTeams.map((team) => (
-                  <tr key={team.id} className="hover:bg-slate-50/70 transition-colors">
-                    {/* Team */}
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                          {team.regCode}
-                        </span>
-                        <span className="font-bold text-slate-900">{team.name}</span>
-                      </div>
-                    </td>
-
-                    {/* Track */}
-                    <td className="px-5 py-3.5 whitespace-nowrap text-slate-600 font-medium">
-                      {team.track}
-                    </td>
-
-                    {/* Mentor */}
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      {team.mentor ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-800">{team.mentor.name}</span>
-                          <ActionButton
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setAssignTeam(team);
-                              setSelectedMentorId(team.mentor?.id || "");
-                            }}
-                            viewOnlyMessage="Reassigning mentors requires Coordinator Manage tier."
+                        {/* Health */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <Badge
+                            variant={
+                              team.currentHealth === "GREEN"
+                                ? "success"
+                                : team.currentHealth === "YELLOW"
+                                ? "warning"
+                                : "danger"
+                            }
                           >
-                            Edit
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <ActionButton
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setAssignTeam(team);
-                            setSelectedMentorId("");
-                          }}
-                          viewOnlyMessage="Assigning mentors requires Coordinator Manage tier."
-                        >
-                          + Assign Mentor
-                        </ActionButton>
-                      )}
-                    </td>
+                            {team.currentHealth === "GREEN" ? "● Green" : team.currentHealth === "YELLOW" ? "▲ Yellow" : "■ Red"}
+                          </Badge>
+                        </td>
 
-                    {/* Health */}
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <Badge
-                        variant={
-                          team.currentHealth === "GREEN"
-                            ? "success"
-                            : team.currentHealth === "YELLOW"
-                            ? "warning"
-                            : "danger"
-                        }
-                      >
-                        {team.currentHealth === "GREEN" ? "● Green" : team.currentHealth === "YELLOW" ? "▲ Yellow" : "■ Red"}
-                      </Badge>
-                    </td>
+                        {/* Mandatory Progress */}
+                        <td className="px-5 py-3.5 whitespace-nowrap min-w-[150px]">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 pb-1">
+                            <span>{team.progress.mandatoryProgressPercent}%</span>
+                            <span className="text-slate-400">
+                              {team.progress.mandatoryCompleted}/{team.progress.mandatoryTotal}
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-indigo-600 h-1.5 rounded-full"
+                              style={{ width: `${team.progress.mandatoryProgressPercent}%` }}
+                            />
+                          </div>
+                        </td>
 
-                    {/* Mandatory Progress */}
-                    <td className="px-5 py-3.5 whitespace-nowrap min-w-[150px]">
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 pb-1">
-                        <span>{team.progress.mandatoryProgressPercent}%</span>
-                        <span className="text-slate-400">
-                          {team.progress.mandatoryCompleted}/{team.progress.mandatoryTotal}
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="bg-indigo-600 h-1.5 rounded-full"
-                          style={{ width: `${team.progress.mandatoryProgressPercent}%` }}
-                        />
-                      </div>
-                    </td>
+                        {/* Overdue */}
+                        <td className="px-5 py-3.5 whitespace-nowrap text-center">
+                          {team.overdueCount > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-800">
+                              {team.overdueCount}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-medium">0</span>
+                          )}
+                        </td>
 
-                    {/* Overdue */}
-                    <td className="px-5 py-3.5 whitespace-nowrap text-center">
-                      {team.overdueCount > 0 ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-800">
-                          {team.overdueCount}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 font-medium">0</span>
-                      )}
-                    </td>
+                        {/* Cadence */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span
+                            className={`text-[11px] font-semibold ${
+                              team.cadence.status === "CHECKIN_OVERDUE"
+                                ? "text-rose-600"
+                                : team.cadence.status === "CHECKIN_DUE"
+                                ? "text-amber-600"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            {team.cadence.message}
+                          </span>
+                        </td>
 
-                    {/* Cadence */}
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          team.cadence.status === "CHECKIN_OVERDUE"
-                            ? "text-rose-600"
-                            : team.cadence.status === "CHECKIN_DUE"
-                            ? "text-amber-600"
-                            : "text-emerald-600"
-                        }`}
-                      >
-                        {team.cadence.message}
-                      </span>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-5 py-3.5 whitespace-nowrap text-right">
-                      <Button variant="outline" size="sm" onClick={() => setInspectTeam(team)}>
-                        Inspect
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                        {/* Actions */}
+                        <td className="px-5 py-3.5 whitespace-nowrap text-right">
+                          <Button variant="outline" size="sm" onClick={() => setInspectTeam(team)}>
+                            Inspect
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modal: Define Mandatory Milestone */}

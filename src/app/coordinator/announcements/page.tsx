@@ -144,7 +144,7 @@ export default function CoordinatorAnnouncementsPage() {
         publishedAt: new Date().toISOString(),
         authorName: "Coordinator",
         readCount: 0,
-        eligibleCount: data.recipientsCount || 100,
+        eligibleCount: data.recipientsCount || 0,
       };
 
       setAnnouncements([newAnn, ...announcements]);
@@ -175,12 +175,7 @@ export default function CoordinatorAnnouncementsPage() {
         const data = await res.json();
         setReaders(data.readers || []);
       } else {
-        // Fallback demo readers
-        setReaders([
-          { userId: "u1", name: "Alice Lead", email: "alice@college.edu", readAt: new Date().toISOString() },
-          { userId: "u2", name: "Bob Developer", email: "bob@college.edu", readAt: new Date().toISOString() },
-          { userId: "u3", name: "Charlie Hacker", email: "charlie@college.edu", readAt: new Date().toISOString() },
-        ]);
+        setReaders([]);
       }
     } catch {
       setReaders([]);

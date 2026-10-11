@@ -38,9 +38,15 @@ export default function LoginPage() {
 
   const autofill = (userEmail: string) => {
     setEmail(userEmail);
-    setPassword("Password123!");
+    setPassword("");
     setError(null);
   };
+
+  // Seeded-persona shortcuts are a developer convenience only. They are never
+  // compiled into production builds unless NEXT_PUBLIC_ENABLE_DEMO_PERSONAS
+  // is explicitly set (default: off).
+  const DEMO_PERSONAS_ENABLED =
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_PERSONAS === "true";
 
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -53,7 +59,7 @@ export default function LoginPage() {
             Sign in to HackTrack
           </h2>
           <p className="mt-1 text-center text-sm text-slate-600">
-            Enter your credentials or choose a quick role persona below
+            Use the institutional email and password issued to your account.
           </p>
         </div>
 
@@ -102,56 +108,57 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Persona Autofill Shortcuts for Testing */}
-        <div className="border-t border-slate-200 pt-6">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Testing Shortcuts (Autofill Seeded Personas):
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => autofill("superadmin@hacktrack.edu")}
-              className="rounded border border-purple-200 bg-purple-50 p-2 text-left text-purple-900 hover:bg-purple-100"
-            >
-              👑 Super Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => autofill("coord.manage@hacktrack.edu")}
-              className="rounded border border-blue-200 bg-blue-50 p-2 text-left text-blue-900 hover:bg-blue-100"
-            >
-              🛠️ Coord (Manage)
-            </button>
-            <button
-              type="button"
-              onClick={() => autofill("coord.view@hacktrack.edu")}
-              className="rounded border border-slate-200 bg-slate-50 p-2 text-left text-slate-800 hover:bg-slate-100"
-            >
-              👁️ Coord (View)
-            </button>
-            <button
-              type="button"
-              onClick={() => autofill("evaluator@hacktrack.edu")}
-              className="rounded border border-emerald-200 bg-emerald-50 p-2 text-left text-emerald-900 hover:bg-emerald-100"
-            >
-              ⚖️ Evaluator
-            </button>
-            <button
-              type="button"
-              onClick={() => autofill("mentor@hacktrack.edu")}
-              className="rounded border border-amber-200 bg-amber-50 p-2 text-left text-amber-900 hover:bg-amber-100"
-            >
-              🧭 Mentor
-            </button>
-            <button
-              type="button"
-              onClick={() => autofill("lead@hacktrack.edu")}
-              className="rounded border border-indigo-200 bg-indigo-50 p-2 text-left text-indigo-900 hover:bg-indigo-100"
-            >
-              🚀 Team Lead
-            </button>
+        {DEMO_PERSONAS_ENABLED && (
+          <div className="border-t border-slate-200 pt-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+              Testing Shortcuts (Autofill Seeded Personas):
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => autofill("superadmin@hacktrack.edu")}
+                className="rounded border border-purple-200 bg-purple-50 p-2 text-left text-purple-900 hover:bg-purple-100"
+              >
+                👑 Super Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => autofill("coord.manage@hacktrack.edu")}
+                className="rounded border border-blue-200 bg-blue-50 p-2 text-left text-blue-900 hover:bg-blue-100"
+              >
+                🛠️ Coord (Manage)
+              </button>
+              <button
+                type="button"
+                onClick={() => autofill("coord.view@hacktrack.edu")}
+                className="rounded border border-slate-200 bg-slate-50 p-2 text-left text-slate-800 hover:bg-slate-100"
+              >
+                👁️ Coord (View)
+              </button>
+              <button
+                type="button"
+                onClick={() => autofill("evaluator@hacktrack.edu")}
+                className="rounded border border-emerald-200 bg-emerald-50 p-2 text-left text-emerald-900 hover:bg-emerald-100"
+              >
+                ⚖️ Evaluator
+              </button>
+              <button
+                type="button"
+                onClick={() => autofill("mentor@hacktrack.edu")}
+                className="rounded border border-amber-200 bg-amber-50 p-2 text-left text-amber-900 hover:bg-amber-100"
+              >
+                🧭 Mentor
+              </button>
+              <button
+                type="button"
+                onClick={() => autofill("lead@hacktrack.edu")}
+                className="rounded border border-indigo-200 bg-indigo-50 p-2 text-left text-indigo-900 hover:bg-indigo-100"
+              >
+                🚀 Team Lead
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

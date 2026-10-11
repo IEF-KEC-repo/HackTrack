@@ -18,42 +18,14 @@ export interface NotificationItem {
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "unread" | "announcements">("all");
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: "notif_demo_1",
-      type: "SLIDES_LINK_MISSING",
-      title: "Action Required: Google Slides Deck Missing",
-      message: "Please submit your Google Slides shareable link for Ideathon before the deadline.",
-      actionUrl: "/team",
-      isRead: false,
-      createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "notif_demo_2",
-      type: "ANNOUNCEMENT",
-      title: "📢 Ideathon Review Schedule Finalized",
-      message: "Independent 3-reviewer cohort evaluations begin tomorrow at 09:00 AM.",
-      actionUrl: "/coordinator/announcements",
-      isRead: false,
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "notif_demo_3",
-      type: "MILESTONE_DUE_SOON",
-      title: "⏰ Milestone Due Soon: Architecture Diagram",
-      message: "System Architecture & API Contract deliverable is due in 48 hours.",
-      actionUrl: "/team/milestones",
-      isRead: true,
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const [unreadCount, setUnreadCount] = useState<number>(2);
-  const [authenticated, setAuthenticated] = useState<boolean>(true);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch real notifications from API
+  // Fetch real notifications from the authenticated user's feed.
   const fetchNotifications = async () => {
     try {
       const res = await fetch("/api/notifications/list?limit=30");
@@ -64,19 +36,20 @@ export const NotificationBell: React.FC = () => {
       if (res.ok) {
         setAuthenticated(true);
         const data = await res.json();
-        if (data.notifications && data.notifications.length > 0) {
-          setNotifications(data.notifications);
-          setUnreadCount(data.unreadCount ?? 0);
-        }
+        setNotifications(data.notifications ?? []);
+        setUnreadCount(data.unreadCount ?? 0);
       }
     } catch {
-      // Fallback to initial demo notifications in unauthenticated state
+      // The bell only renders real data; a network failure yields an empty feed.
     }
   };
 
   useEffect(() => {
-    if (!authenticated) return;
     fetchNotifications();
+  }, []);
+
+  useEffect(() => {
+    if (authenticated !== true) return;
     const interval = setInterval(fetchNotifications, 60000); // 1 minute poll
     return () => clearInterval(interval);
   }, [authenticated]);
@@ -167,6 +140,10 @@ export const NotificationBell: React.FC = () => {
       return "";
     }
   };
+
+  // The bell is an authenticated surface: render nothing for logged-out
+  // visitors instead of falling back to fabricated notifications.
+  if (authenticated !== true) return null;
 
   return (
     <div className="relative inline-block" ref={dropdownRef}>

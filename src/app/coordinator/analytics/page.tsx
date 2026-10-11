@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CoordinatorShell, useCoordinator } from "@/components/coordinator/CoordinatorShell";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -33,166 +33,349 @@ interface OverdueCheckIn {
   daysSinceLastCheckIn: number;
 }
 
+interface DistributionMetrics {
+  count: number;
+  min: number;
+  p25: number;
+  median: number;
+  p75: number;
+  p90: number;
+  max: number;
+  mean: number;
+  standardDeviation: number;
+}
+
+interface NudgeAlert {
+  variant: "success" | "error";
+  message: string;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "Something went wrong.";
+}
+
 export default function CoordinatorAnalyticsPage() {
-  const { isReadOnly } = useCoordinator();
+  const { isReadOnly, editionSlug } = useCoordinator();
   const [activeTab, setActiveTab] = useState<"funnel" | "overdue" | "distributions" | "export">("funnel");
 
+  // Edition reference state
+  const [editionId, setEditionId] = useState<string>("");
+  const [events, setEvents] = useState<Array<{ id: string; name: string; sequenceIndex: number; status: string }>>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+
   // Funnel State
-  const [funnelData] = useState<{
+  const [funnelData, setFunnelData] = useState<{
     totalRegistered: number;
     stages: FunnelStage[];
-  }>({
-    totalRegistered: 300,
-    stages: [
-      {
-        sequenceIndex: 1,
-        eventName: "Ideathon Screening",
-        status: "COMPLETED",
-        activeCount: 210,
-        conversionPercent: 70.0,
-        dropOffCount: 90,
-        dropOffPercent: 30.0,
-      },
-      {
-        sequenceIndex: 2,
-        eventName: "Innovatz Idea Review",
-        status: "COMPLETED",
-        activeCount: 150,
-        conversionPercent: 50.0,
-        dropOffCount: 60,
-        dropOffPercent: 28.6,
-      },
-      {
-        sequenceIndex: 3,
-        eventName: "CPR 1: Architecture & Kernel",
-        status: "ACTIVE",
-        activeCount: 90,
-        conversionPercent: 30.0,
-        dropOffCount: 60,
-        dropOffPercent: 40.0,
-      },
-      {
-        sequenceIndex: 4,
-        eventName: "CPR 2: Mid-Point Stress Test",
-        status: "UPCOMING",
-        activeCount: 60,
-        conversionPercent: 20.0,
-        dropOffCount: 30,
-        dropOffPercent: 33.3,
-      },
-      {
-        sequenceIndex: 5,
-        eventName: "POC Prototype Review",
-        status: "UPCOMING",
-        activeCount: 35,
-        conversionPercent: 11.7,
-        dropOffCount: 25,
-        dropOffPercent: 41.7,
-      },
-      {
-        sequenceIndex: 6,
-        eventName: "Demo Day Finale",
-        status: "UPCOMING",
-        activeCount: 20,
-        conversionPercent: 6.7,
-        dropOffCount: 15,
-        dropOffPercent: 42.9,
-      },
-    ],
-  });
+  }>({ totalRegistered: 0, stages: [] });
 
   // Overdue Radar State
-  const [missingSlides] = useState([
-    { id: "t_101", regCode: "HT26-T101", name: "RoboTrack AI", track: "Robotics" },
-    { id: "t_102", regCode: "HT26-T102", name: "GreenWatt Dynamics", track: "CleanTech" },
-  ]);
+  const [missingSlides, setMissingSlides] = useState<Array<{ id: string; regCode: string; name: string; track: string }>>([]);
 
-  const [overdueMilestones] = useState<OverdueMilestone[]>([
-    {
-      id: "ms_1",
-      teamCode: "HT26-T003",
-      teamName: "SolarGrid Nexus",
-      title: "Hardware BOM & Bench Latency Report",
-      dueDate: "Sep 25, 2026",
-      daysOverdue: 6,
-    },
-    {
-      id: "ms_2",
-      teamCode: "HT26-T014",
-      teamName: "AeroVision Labs",
-      title: "Camera Feed RTSP Calibration",
-      dueDate: "Sep 28, 2026",
-      daysOverdue: 3,
-    },
-  ]);
+  const [overdueMilestones, setOverdueMilestones] = useState<OverdueMilestone[]>([]);
 
-  const [overdueCheckIns] = useState<OverdueCheckIn[]>([
-    {
-      teamCode: "HT26-T008",
-      teamName: "AgroSense Edge",
-      mentorName: "Prof. Kenneth Clark",
-      daysSinceLastCheckIn: 18,
-    },
-    {
-      teamCode: "HT26-T022",
-      teamName: "MedSafe Chain",
-      mentorName: "Dr. Ananya Roy",
-      daysSinceLastCheckIn: 15,
-    },
-  ]);
+  const [overdueCheckIns, setOverdueCheckIns] = useState<OverdueCheckIn[]>([]);
 
-  const [pendingEvaluators] = useState([
-    { name: "Dr. Jonathan Hayes", email: "j.hayes@hacktrack.edu", pendingCount: 4, event: "Ideathon" },
-    { name: "Elena Rostova", email: "e.rostova@hacktrack.edu", pendingCount: 2, event: "Ideathon" },
-  ]);
+  const [pendingEvaluators, setPendingEvaluators] = useState<Array<{ name: string; email: string; pendingCount: number; event: string }>>([]);
 
   // Score Distribution State
-  const [distributionStats] = useState({
-    raw: {
-      count: 900,
-      min: 42.0,
-      p25: 64.5,
-      median: 74.0,
-      p75: 82.5,
-      p90: 91.0,
-      max: 98.0,
-      mean: 73.4,
-      standardDeviation: 12.8,
-    },
-    normalized: {
-      count: 900,
-      min: 48.2,
-      p25: 68.0,
-      median: 75.0,
-      p75: 81.4,
-      p90: 88.5,
-      max: 94.2,
-      mean: 75.0,
-      standardDeviation: 10.0,
-    },
-    outlierCount: 4,
-    calibrationEvaluatorCount: 15,
-  });
+  const [distributionStats, setDistributionStats] = useState<{
+    raw: DistributionMetrics;
+    normalized: DistributionMetrics;
+    outlierCount: number;
+  } | null>(null);
+
+  // Loading / Error State
+  const [isLoadingCore, setIsLoadingCore] = useState(true);
+  const [coreError, setCoreError] = useState<string | null>(null);
+  const [isLoadingDist, setIsLoadingDist] = useState(false);
+  const [distError, setDistError] = useState<string | null>(null);
 
   // Nudge Modal State
   const [isNudgeModalOpen, setIsNudgeModalOpen] = useState(false);
   const [nudgeTarget, setNudgeTarget] = useState<string>("");
   const [nudgeMessage, setNudgeMessage] = useState<string>("");
-  const [nudgeSentAlert, setNudgeSentAlert] = useState<string | null>(null);
+  const [nudgeTargetRole, setNudgeTargetRole] = useState<"PARTICIPANT" | "EVALUATOR">("PARTICIPANT");
+  const [nudgeTeamId, setNudgeTeamId] = useState<string | null>(null);
+  const [nudgeAlert, setNudgeAlert] = useState<NudgeAlert | null>(null);
 
-  const handleOpenNudge = (target: string, defaultMsg: string) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCoreData = async () => {
+      setIsLoadingCore(true);
+      setCoreError(null);
+      try {
+        const [editionRes, funnelRes, overdueRes] = await Promise.all([
+          fetch(`/api/coordinator/edition-data?slug=${encodeURIComponent(editionSlug)}`),
+          fetch(`/api/coordinator/analytics/funnel?edition=${encodeURIComponent(editionSlug)}`),
+          fetch(`/api/coordinator/analytics/overdue?edition=${encodeURIComponent(editionSlug)}`),
+        ]);
+
+        const editionJson = await editionRes.json();
+        if (cancelled) return;
+        if (!editionRes.ok) throw new Error(editionJson.error || "Failed to load edition data.");
+
+        const edition = editionJson.edition as
+          | { id: string; events?: Array<{ id: string; name: string; sequenceIndex: number; status: string }> }
+          | null
+          | undefined;
+
+        const editionIdFromApi = edition?.id || "";
+        setEditionId(editionIdFromApi);
+
+        const evts = (edition?.events ?? []).map((ev) => ({
+          id: ev.id,
+          name: ev.name,
+          sequenceIndex: ev.sequenceIndex,
+          status: ev.status,
+        }));
+        setEvents(evts);
+        setSelectedEventId((prev) => (evts.some((ev) => ev.id === prev) ? prev : evts[0]?.id ?? ""));
+
+        // Funnel
+        const funnelJson = await funnelRes.json();
+        if (cancelled) return;
+        if (!funnelRes.ok) throw new Error(funnelJson.error || "Failed to load funnel data.");
+
+        const funnel = (funnelJson.funnel ?? null) as {
+          totalRegisteredTeams?: number;
+          stages?: Array<{
+            sequenceIndex: number;
+            eventName: string;
+            status: string;
+            activeTeamsCount: number;
+            conversionPercent: number;
+            dropOffCount: number;
+            dropOffPercent: number;
+          }>;
+        } | null;
+
+        setFunnelData({
+          totalRegistered: funnel?.totalRegisteredTeams ?? 0,
+          stages: (funnel?.stages ?? []).map((s) => ({
+            sequenceIndex: s.sequenceIndex,
+            eventName: s.eventName,
+            status: s.status,
+            activeCount: s.activeTeamsCount,
+            conversionPercent: s.conversionPercent,
+            dropOffCount: s.dropOffCount,
+            dropOffPercent: s.dropOffPercent,
+          })),
+        });
+
+        // Overdue
+        const overdueJson = await overdueRes.json();
+        if (cancelled) return;
+        if (!overdueRes.ok) throw new Error(overdueJson.error || "Failed to load overdue items.");
+
+        const overdue = (overdueJson.overdue ?? null) as {
+          missingSlidesTeams?: Array<{ id: string; regCode: string; name: string }>;
+          overdueMilestones?: Array<{
+            id: string;
+            teamId: string;
+            teamName: string;
+            title: string;
+            dueDate: string;
+            daysOverdue: number;
+          }>;
+          overdueCheckInTeams?: Array<{
+            teamId: string;
+            teamName: string;
+            mentorName: string;
+            daysSinceLastCheckIn: number;
+          }>;
+          pendingEvaluators?: Array<{
+            evaluatorName: string;
+            eventName: string;
+            pendingCount: number;
+          }>;
+        } | null;
+
+        setMissingSlides(
+          (overdue?.missingSlidesTeams ?? []).map((t) => ({
+            id: t.id,
+            regCode: t.regCode,
+            name: t.name,
+            track: "—",
+          }))
+        );
+
+        setOverdueMilestones(
+          (overdue?.overdueMilestones ?? []).map((m) => ({
+            id: m.id,
+            teamCode: m.teamId,
+            teamName: m.teamName,
+            title: m.title,
+            dueDate: m.dueDate,
+            daysOverdue: m.daysOverdue,
+          }))
+        );
+
+        setOverdueCheckIns(
+          (overdue?.overdueCheckInTeams ?? []).map((c) => ({
+            teamCode: c.teamId,
+            teamName: c.teamName,
+            mentorName: c.mentorName,
+            daysSinceLastCheckIn: c.daysSinceLastCheckIn,
+          }))
+        );
+
+        setPendingEvaluators(
+          (overdue?.pendingEvaluators ?? []).map((p) => ({
+            name: p.evaluatorName,
+            email: "—",
+            pendingCount: p.pendingCount,
+            event: p.eventName,
+          }))
+        );
+
+        if (cancelled) return;
+        setIsLoadingCore(false);
+      } catch (err) {
+        if (!cancelled) {
+          setCoreError(getErrorMessage(err));
+          setIsLoadingCore(false);
+        }
+      }
+    };
+
+    loadCoreData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editionSlug]);
+
+  useEffect(() => {
+    if (activeTab !== "distributions" || !selectedEventId) return;
+
+    let cancelled = false;
+
+    const loadDistribution = async () => {
+      setIsLoadingDist(true);
+      setDistError(null);
+      try {
+        const [scoresRes, leaderboardRes] = await Promise.all([
+          fetch(`/api/coordinator/analytics/scores?eventId=${encodeURIComponent(selectedEventId)}`),
+          fetch(
+            `/api/coordinator/scoring/leaderboard?eventId=${encodeURIComponent(selectedEventId)}&edition=${encodeURIComponent(editionSlug)}`
+          ),
+        ]);
+
+        const scoresJson = await scoresRes.json();
+        const leaderboardJson = leaderboardRes.ok ? await leaderboardRes.json() : null;
+        if (cancelled) return;
+        if (!scoresRes.ok) throw new Error(scoresJson.error || "Failed to load score distributions.");
+
+        const distributions = (scoresJson.distributions ?? null) as {
+          rawDistribution?: Partial<DistributionMetrics>;
+          normalizedDistribution?: Partial<DistributionMetrics>;
+        } | null;
+
+        const raw = distributions?.rawDistribution;
+        const normalized = distributions?.normalizedDistribution;
+
+        setDistributionStats({
+          raw: {
+            count: raw?.count ?? 0,
+            min: raw?.min ?? 0,
+            p25: raw?.p25 ?? 0,
+            median: raw?.median ?? 0,
+            p75: raw?.p75 ?? 0,
+            p90: raw?.p90 ?? 0,
+            max: raw?.max ?? 0,
+            mean: raw?.mean ?? 0,
+            standardDeviation: raw?.standardDeviation ?? 0,
+          },
+          normalized: {
+            count: normalized?.count ?? 0,
+            min: normalized?.min ?? 0,
+            p25: normalized?.p25 ?? 0,
+            median: normalized?.median ?? 0,
+            p75: normalized?.p75 ?? 0,
+            p90: normalized?.p90 ?? 0,
+            max: normalized?.max ?? 0,
+            mean: normalized?.mean ?? 0,
+            standardDeviation: normalized?.standardDeviation ?? 0,
+          },
+          outlierCount: leaderboardJson?.summary?.outlierCount ?? 0,
+        });
+
+        if (cancelled) return;
+        setIsLoadingDist(false);
+      } catch (err) {
+        if (!cancelled) {
+          setDistributionStats(null);
+          setDistError(getErrorMessage(err));
+          setIsLoadingDist(false);
+        }
+      }
+    };
+
+    loadDistribution();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, editionSlug, selectedEventId]);
+
+  const handleOpenNudge = (
+    target: string,
+    defaultMsg: string,
+    targetRole: "PARTICIPANT" | "EVALUATOR",
+    teamId?: string
+  ) => {
     if (isReadOnly) return;
     setNudgeTarget(target);
     setNudgeMessage(defaultMsg);
+    setNudgeTargetRole(targetRole);
+    setNudgeTeamId(teamId ?? null);
+    setNudgeAlert(null);
     setIsNudgeModalOpen(true);
   };
 
-  const handleSendNudge = (e: React.FormEvent) => {
+  const handleSendNudge = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsNudgeModalOpen(false);
-    setNudgeSentAlert(`Automated nudge notification dispatched to: ${nudgeTarget}`);
-    setTimeout(() => setNudgeSentAlert(null), 5000);
+
+    if (!editionId) {
+      setIsNudgeModalOpen(false);
+      setNudgeAlert({ variant: "error", message: "Edition context is not loaded yet. Please retry shortly." });
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/announcements/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editionId,
+          title: "Reminder",
+          content: nudgeMessage,
+          priority: "NORMAL",
+          targetRole: nudgeTargetRole,
+          teamId: nudgeTeamId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to dispatch nudge.");
+
+      const recipientsText =
+        typeof data.recipientsCount === "number" ? ` (dispatched to ${data.recipientsCount} recipients)` : "";
+      setIsNudgeModalOpen(false);
+      setNudgeAlert({
+        variant: "success",
+        message: `Automated nudge notification dispatched to: ${nudgeTarget}${recipientsText}`,
+      });
+    } catch (err) {
+      setIsNudgeModalOpen(false);
+      setNudgeAlert({ variant: "error", message: getErrorMessage(err) });
+    }
   };
+
+  const overdueTotal = missingSlides.length + overdueMilestones.length + overdueCheckIns.length + pendingEvaluators.length;
 
   return (
     <CoordinatorShell
@@ -200,10 +383,20 @@ export default function CoordinatorAnalyticsPage() {
       description="Funnel conversion rates across stages, overdue items, score normalization calibration, and institutional exports"
     >
       <div className="space-y-6">
-        {/* Nudge Sent Toast */}
-        {nudgeSentAlert && (
-          <Alert variant="success" title="Notification Dispatched">
-            {nudgeSentAlert}
+        {/* Nudge Dispatch Toast */}
+        {nudgeAlert && (
+          <Alert
+            variant={nudgeAlert.variant}
+            title={nudgeAlert.variant === "success" ? "Notification Dispatched" : "Nudge Dispatch Failed"}
+          >
+            {nudgeAlert.message}
+          </Alert>
+        )}
+
+        {/* Core Data Load Errors */}
+        {coreError && (
+          <Alert variant="error" title="Failed to Load Analytics">
+            {coreError}
           </Alert>
         )}
 
@@ -219,7 +412,7 @@ export default function CoordinatorAnalyticsPage() {
             }`}
           >
             <span>📊 Cohort Funnel</span>
-            <Badge variant="purple" size="sm">6 Stages</Badge>
+            <Badge variant="purple" size="sm">{events.length} Stages</Badge>
           </button>
 
           <button
@@ -233,7 +426,7 @@ export default function CoordinatorAnalyticsPage() {
           >
             <span>⚠️ Overdue Radar</span>
             <Badge variant="danger" size="sm">
-              {missingSlides.length + overdueMilestones.length + overdueCheckIns.length + pendingEvaluators.length}
+              {overdueTotal}
             </Badge>
           </button>
 
@@ -266,6 +459,12 @@ export default function CoordinatorAnalyticsPage() {
         {/* TAB 1: COHORT FUNNEL */}
         {activeTab === "funnel" && (
           <div className="space-y-6">
+            {isLoadingCore && (
+              <Alert variant="info" title="Loading Analytics">
+                Fetching cohort funnel and overdue radar data…
+              </Alert>
+            )}
+
             {/* Funnel Metrics Overview Card */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-200 gap-4">
@@ -337,6 +536,12 @@ export default function CoordinatorAnalyticsPage() {
                     </div>
                   );
                 })}
+
+                {funnelData.stages.length === 0 && (
+                  <p className="text-sm text-slate-500">
+                    No funnel stages are available for this edition yet.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -345,6 +550,12 @@ export default function CoordinatorAnalyticsPage() {
         {/* TAB 2: OVERDUE RADAR & NUDGE CENTER */}
         {activeTab === "overdue" && (
           <div className="space-y-6">
+            {isLoadingCore && (
+              <Alert variant="info" title="Loading Analytics">
+                Fetching overdue radar data…
+              </Alert>
+            )}
+
             {/* Missing Slides Radar */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-200">
@@ -366,7 +577,8 @@ export default function CoordinatorAnalyticsPage() {
                     onClick={() =>
                       handleOpenNudge(
                         "All Teams with Missing Decks",
-                        "Urgent: Your Google Slides pitch deck has not been submitted or verified. Please submit it via your Team Hub immediately before the evaluation cutoff."
+                        "Urgent: Your Google Slides pitch deck has not been submitted or verified. Please submit it via your Team Hub immediately before the evaluation cutoff.",
+                        "PARTICIPANT"
                       )
                     }
                   >
@@ -390,7 +602,9 @@ export default function CoordinatorAnalyticsPage() {
                       onClick={() =>
                         handleOpenNudge(
                           team.name,
-                          `Reminder for ${team.name}: Please upload your presentation deck URL.`
+                          `Reminder for ${team.name}: Please upload your presentation deck URL.`,
+                          "PARTICIPANT",
+                          team.id
                         )
                       }
                     >
@@ -398,6 +612,10 @@ export default function CoordinatorAnalyticsPage() {
                     </Button>
                   </div>
                 ))}
+
+                {missingSlides.length === 0 && (
+                  <p className="py-3 text-xs text-slate-500">No teams are missing verified presentation decks. 🎉</p>
+                )}
               </div>
             </div>
 
@@ -435,7 +653,9 @@ export default function CoordinatorAnalyticsPage() {
                       onClick={() =>
                         handleOpenNudge(
                           ms.teamName,
-                          `Urgent Milestone Alert: "${ms.title}" is ${ms.daysOverdue} days past due.`
+                          `Urgent Milestone Alert: "${ms.title}" is ${ms.daysOverdue} days past due.`,
+                          "PARTICIPANT",
+                          ms.teamCode
                         )
                       }
                     >
@@ -443,6 +663,10 @@ export default function CoordinatorAnalyticsPage() {
                     </Button>
                   </div>
                 ))}
+
+                {overdueMilestones.length === 0 && (
+                  <p className="py-3 text-xs text-slate-500">No overdue milestone deliverables. 🎉</p>
+                )}
               </div>
             </div>
 
@@ -480,7 +704,9 @@ export default function CoordinatorAnalyticsPage() {
                       onClick={() =>
                         handleOpenNudge(
                           `${ci.teamName} & ${ci.mentorName}`,
-                          `Reminder: Bi-weekly mentor check-in is overdue (${ci.daysSinceLastCheckIn} days since last session). Please log your discussion.`
+                          `Reminder: Bi-weekly mentor check-in is overdue (${ci.daysSinceLastCheckIn} days since last session). Please log your discussion.`,
+                          "PARTICIPANT",
+                          ci.teamCode
                         )
                       }
                     >
@@ -488,6 +714,10 @@ export default function CoordinatorAnalyticsPage() {
                     </Button>
                   </div>
                 ))}
+
+                {overdueCheckIns.length === 0 && (
+                  <p className="py-3 text-xs text-slate-500">No lapsed mentor check-ins. 🎉</p>
+                )}
               </div>
             </div>
 
@@ -524,7 +754,8 @@ export default function CoordinatorAnalyticsPage() {
                       onClick={() =>
                         handleOpenNudge(
                           ev.name,
-                          `Evaluation Cutoff Reminder: You have ${ev.pendingCount} incomplete reviews remaining in your Ideathon queue.`
+                          `Evaluation Cutoff Reminder: You have ${ev.pendingCount} incomplete reviews remaining in your ${ev.event} queue.`,
+                          "EVALUATOR"
                         )
                       }
                     >
@@ -532,6 +763,10 @@ export default function CoordinatorAnalyticsPage() {
                     </Button>
                   </div>
                 ))}
+
+                {pendingEvaluators.length === 0 && (
+                  <p className="py-3 text-xs text-slate-500">No pending evaluator queues. 🎉</p>
+                )}
               </div>
             </div>
           </div>
@@ -540,97 +775,113 @@ export default function CoordinatorAnalyticsPage() {
         {/* TAB 3: SCORE DISTRIBUTIONS & NORMALIZATION STATS */}
         {activeTab === "distributions" && (
           <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-200 gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">Score Distributions & Calibration Metrics</h2>
-                  <p className="text-xs text-slate-500">
-                    Empirical validation of Z-Score normalization eliminating evaluator grading leniency and harshness
-                  </p>
+            {isLoadingDist ? (
+              <Alert variant="info" title="Loading Distributions">
+                Fetching score distributions for the selected event…
+              </Alert>
+            ) : distError ? (
+              <Alert variant="error" title="Failed to Load Score Distributions">
+                {distError}
+              </Alert>
+            ) : !distributionStats ||
+              (distributionStats.raw.count === 0 && distributionStats.normalized.count === 0) ? (
+              <Alert variant="info" title="No Score Distribution Data">
+                No submitted evaluations are available for this event yet. Distribution metrics will appear once
+                reviews are recorded.
+              </Alert>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-200 gap-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Score Distributions & Calibration Metrics</h2>
+                    <p className="text-xs text-slate-500">
+                      Empirical validation of Z-Score normalization eliminating evaluator grading leniency and harshness
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="purple" size="md">
+                      Total Evaluations: {distributionStats.raw.count}
+                    </Badge>
+                    <Badge variant="warning" size="md">
+                      Outlier Discrepancies: {distributionStats.outlierCount}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="purple" size="md">
-                    Total Evaluations: {distributionStats.raw.count}
-                  </Badge>
-                  <Badge variant="warning" size="md">
-                    Outlier Discrepancies: {distributionStats.outlierCount}
-                  </Badge>
+
+                {/* Side-by-Side Distribution Metric Comparison */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Raw Scores Column */}
+                  <div className="rounded-xl border border-slate-200 p-5 bg-slate-50/50">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                      <h3 className="font-bold text-slate-900 text-sm">Raw Scores (Pre-Normalization)</h3>
+                      <Badge variant="default" size="sm">Subjective</Badge>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">Mean (μ)</span>
+                        <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.mean.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">Std Dev (σ)</span>
+                        <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.standardDeviation.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">Median (p50)</span>
+                        <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.median.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">Min / Max</span>
+                        <p className="text-sm font-bold text-slate-900 mt-1.5">
+                          {distributionStats.raw.min.toFixed(0)} - {distributionStats.raw.max.toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200 text-xs flex justify-between font-mono">
+                      <span>25th Percentile: <strong>{distributionStats.raw.p25.toFixed(1)}</strong></span>
+                      <span>75th Percentile: <strong>{distributionStats.raw.p75.toFixed(1)}</strong></span>
+                      <span>90th Percentile: <strong>{distributionStats.raw.p90.toFixed(1)}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Normalized Scores Column */}
+                  <div className="rounded-xl border border-indigo-200 p-5 bg-indigo-50/20">
+                    <div className="flex items-center justify-between pb-3 border-b border-indigo-200">
+                      <h3 className="font-bold text-indigo-950 text-sm">Normalized Scores (Z-Score Standardized)</h3>
+                      <Badge variant="purple" size="sm">Calibrated</Badge>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                      <div className="p-3 bg-white rounded-lg border border-indigo-200">
+                        <span className="text-[10px] uppercase font-bold text-indigo-700">Cohort μ</span>
+                        <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.mean.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-indigo-200">
+                        <span className="text-[10px] uppercase font-bold text-indigo-700">Target σ</span>
+                        <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.standardDeviation.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-indigo-200">
+                        <span className="text-[10px] uppercase font-bold text-indigo-700">Median</span>
+                        <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.median.toFixed(1)}</p>
+                      </div>
+                      <div className="p-3 bg-white rounded-lg border border-indigo-200">
+                        <span className="text-[10px] uppercase font-bold text-indigo-700">Min / Max</span>
+                        <p className="text-sm font-bold text-indigo-900 mt-1.5">
+                          {distributionStats.normalized.min.toFixed(0)} - {distributionStats.normalized.max.toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 p-3 bg-white rounded-lg border border-indigo-200 text-xs flex justify-between font-mono text-indigo-950">
+                      <span>25th Percentile: <strong>{distributionStats.normalized.p25.toFixed(1)}</strong></span>
+                      <span>75th Percentile: <strong>{distributionStats.normalized.p75.toFixed(1)}</strong></span>
+                      <span>90th Percentile: <strong>{distributionStats.normalized.p90.toFixed(1)}</strong></span>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              {/* Side-by-Side Distribution Metric Comparison */}
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Raw Scores Column */}
-                <div className="rounded-xl border border-slate-200 p-5 bg-slate-50/50">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                    <h3 className="font-bold text-slate-900 text-sm">Raw Scores (Pre-Normalization)</h3>
-                    <Badge variant="default" size="sm">Subjective</Badge>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                    <div className="p-3 bg-white rounded-lg border border-slate-200">
-                      <span className="text-[10px] uppercase font-bold text-slate-500">Mean (μ)</span>
-                      <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.mean.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-slate-200">
-                      <span className="text-[10px] uppercase font-bold text-slate-500">Std Dev (σ)</span>
-                      <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.standardDeviation.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-slate-200">
-                      <span className="text-[10px] uppercase font-bold text-slate-500">Median (p50)</span>
-                      <p className="text-lg font-bold text-slate-900 mt-1">{distributionStats.raw.median.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-slate-200">
-                      <span className="text-[10px] uppercase font-bold text-slate-500">Min / Max</span>
-                      <p className="text-sm font-bold text-slate-900 mt-1.5">
-                        {distributionStats.raw.min.toFixed(0)} - {distributionStats.raw.max.toFixed(0)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200 text-xs flex justify-between font-mono">
-                    <span>25th Percentile: <strong>{distributionStats.raw.p25.toFixed(1)}</strong></span>
-                    <span>75th Percentile: <strong>{distributionStats.raw.p75.toFixed(1)}</strong></span>
-                    <span>90th Percentile: <strong>{distributionStats.raw.p90.toFixed(1)}</strong></span>
-                  </div>
-                </div>
-
-                {/* Normalized Scores Column */}
-                <div className="rounded-xl border border-indigo-200 p-5 bg-indigo-50/20">
-                  <div className="flex items-center justify-between pb-3 border-b border-indigo-200">
-                    <h3 className="font-bold text-indigo-950 text-sm">Normalized Scores (Z-Score Standardized)</h3>
-                    <Badge variant="purple" size="sm">Calibrated</Badge>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                    <div className="p-3 bg-white rounded-lg border border-indigo-200">
-                      <span className="text-[10px] uppercase font-bold text-indigo-700">Cohort μ</span>
-                      <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.mean.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-indigo-200">
-                      <span className="text-[10px] uppercase font-bold text-indigo-700">Target σ</span>
-                      <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.standardDeviation.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-indigo-200">
-                      <span className="text-[10px] uppercase font-bold text-indigo-700">Median</span>
-                      <p className="text-lg font-bold text-indigo-900 mt-1">{distributionStats.normalized.median.toFixed(1)}</p>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg border border-indigo-200">
-                      <span className="text-[10px] uppercase font-bold text-indigo-700">Min / Max</span>
-                      <p className="text-sm font-bold text-indigo-900 mt-1.5">
-                        {distributionStats.normalized.min.toFixed(0)} - {distributionStats.normalized.max.toFixed(0)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-3 bg-white rounded-lg border border-indigo-200 text-xs flex justify-between font-mono text-indigo-950">
-                    <span>25th Percentile: <strong>{distributionStats.normalized.p25.toFixed(1)}</strong></span>
-                    <span>75th Percentile: <strong>{distributionStats.normalized.p75.toFixed(1)}</strong></span>
-                    <span>90th Percentile: <strong>{distributionStats.normalized.p90.toFixed(1)}</strong></span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -750,7 +1001,7 @@ export default function CoordinatorAnalyticsPage() {
       >
         <form onSubmit={handleSendNudge} className="space-y-4 text-xs">
           <p className="text-slate-600">
-            This will dispatch a high-priority in-app notification and an automated email reminder to all team leads and members.
+            This will dispatch an in-app notification and an automated email reminder to all team leads and members.
           </p>
 
           <div>

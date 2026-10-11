@@ -51,92 +51,82 @@ interface RankedTeamItem {
   tieBreakReason?: string;
 }
 
+interface CalibrationSample {
+  id: string;
+  title: string;
+  groundTruthScore: number;
+  evaluatorSpread: string;
+  status: string;
+  varianceScore: number;
+}
+
+interface LeaderboardSummary {
+  totalAssigned: number;
+  totalSubmitted: number;
+  completionPercent: number;
+  outlierCount: number;
+}
+
+// Map the live leaderboard payload into the console's render shapes.
+function mapEvaluatorStats(stats: any[] | Record<string, any> | undefined): EvaluatorStatItem[] {
+  const rows = Array.isArray(stats) ? stats : Object.values(stats || {});
+  return rows.map((s) => ({
+    evaluatorId: s.evaluatorId,
+    name: s.name,
+    email: s.email,
+    evaluationCount: s.count ?? s.evaluationCount ?? 0,
+    submittedCount: s.submittedCount ?? s.count,
+    mean: s.mean ?? 0,
+    stdDev: s.stdDev ?? 0,
+    harshness: (s.harshness === "GENEROUS" ? "LENIENT" : s.harshness) as
+      | "HARSH"
+      | "MODERATE"
+      | "LENIENT",
+    isCalibrated: Boolean(s.isCalibrated),
+  }));
+}
+
+function mapRankedTeams(teams: any[] | undefined): RankedTeamItem[] {
+  return (teams || []).map((rt) => ({
+    teamId: rt.teamId,
+    teamName: rt.teamName,
+    regCode: rt.regCode,
+    track: rt.track || "General",
+    reviewCount: rt.reviewerScores?.length ?? rt.reviewCount ?? 0,
+    rawMean: rt.rawAverage ?? rt.rawMean ?? 0,
+    normalizedScore: rt.normalizedScore ?? 0,
+    rawRank: rt.rawRank ?? 0,
+    normalizedRank: rt.rank ?? rt.normalizedRank ?? 0,
+    rankShift: rt.rankShift ?? 0,
+    isOutlier: Boolean(rt.isOutlier),
+    scores: (rt.reviewerScores || []).map((r: any) => r.rawScore),
+    tieBreakReason:
+      rt.tieBreakReason ?? rt.outlierReason ?? undefined,
+  }));
+}
+
+const EMPTY_EVENT: EventItem = {
+  id: "",
+  name: "No stage configured",
+  slug: "",
+  sequenceIndex: 0,
+  reviewType: "LIVE_PANEL",
+  status: "UPCOMING",
+  evaluatorCountPerTeam: 3,
+  feedbackReleased: false,
+  isCalibrationActive: false,
+};
+
 export default function CoordinatorEvaluationsPage() {
   const { isReadOnly, editionSlug } = useCoordinator();
 
-  // Selected event
-  const [events, setEvents] = useState<EventItem[]>([
-    {
-      id: "ev_ideathon",
-      name: "Ideathon",
-      slug: "ideathon",
-      sequenceIndex: 1,
-      reviewType: "ASYNC_MULTI_REVIEWER",
-      status: "EVALUATION_ACTIVE",
-      evaluatorCountPerTeam: 3,
-      feedbackReleased: false,
-      isCalibrationActive: true,
-    },
-    {
-      id: "ev_innovatz",
-      name: "Innovatz (Idea Review)",
-      slug: "innovatz",
-      sequenceIndex: 2,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 3,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-    {
-      id: "ev_cpr1",
-      name: "CPR 1 (Architecture)",
-      slug: "cpr-1",
-      sequenceIndex: 3,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 2,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-    {
-      id: "ev_cpr2",
-      name: "CPR 2 (Implementation)",
-      slug: "cpr-2",
-      sequenceIndex: 4,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 2,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-    {
-      id: "ev_cpr3",
-      name: "CPR 3 (Polish & Testing)",
-      slug: "cpr-3",
-      sequenceIndex: 5,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 2,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-    {
-      id: "ev_poc",
-      name: "Proof of Concept (POC)",
-      slug: "poc",
-      sequenceIndex: 6,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 3,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-    {
-      id: "ev_demo",
-      name: "Demo Day",
-      slug: "demo-day",
-      sequenceIndex: 7,
-      reviewType: "LIVE_PANEL",
-      status: "UPCOMING",
-      evaluatorCountPerTeam: 5,
-      feedbackReleased: false,
-      isCalibrationActive: false,
-    },
-  ]);
+  // Events are loaded live from the real edition configuration.
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
-  const [selectedEventId, setSelectedEventId] = useState<string>("ev_ideathon");
-  const selectedEvent = events.find((e) => e.id === selectedEventId) || events[0];
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const selectedEvent =
+    events.find((e) => e.id === selectedEventId) || events[0] || EMPTY_EVENT;
 
   // Feedback notifications
   const [alert, setAlert] = useState<{ type: "success" | "error" | "info" | "warning"; msg: string } | null>(
@@ -149,170 +139,14 @@ export default function CoordinatorEvaluationsPage() {
   const [filterOutliersOnly, setFilterOutliersOnly] = useState(false);
   const [filterRankShiftsOnly, setFilterRankShiftsOnly] = useState(false);
 
-  // Evaluators & Stats
-  const [evaluators, setEvaluators] = useState<EvaluatorStatItem[]>([
-    {
-      evaluatorId: "evr_1",
-      name: "Dr. Victor Vance",
-      email: "vance@evaluation.hacktrack.edu",
-      evaluationCount: 15,
-      submittedCount: 15,
-      mean: 65.0,
-      stdDev: 10.0,
-      harshness: "HARSH",
-      isCalibrated: true,
-    },
-    {
-      evaluatorId: "evr_2",
-      name: "Prof. Priya Patel",
-      email: "patel@evaluation.hacktrack.edu",
-      evaluationCount: 15,
-      submittedCount: 15,
-      mean: 80.0,
-      stdDev: 8.0,
-      harshness: "MODERATE",
-      isCalibrated: true,
-    },
-    {
-      evaluatorId: "evr_3",
-      name: "Mr. Marcus Mercer",
-      email: "mercer@evaluation.hacktrack.edu",
-      evaluationCount: 15,
-      submittedCount: 15,
-      mean: 85.0,
-      stdDev: 10.0,
-      harshness: "LENIENT",
-      isCalibrated: true,
-    },
-    {
-      evaluatorId: "evr_4",
-      name: "Dr. Evelyn Reed",
-      email: "reed@evaluation.hacktrack.edu",
-      evaluationCount: 14,
-      submittedCount: 12,
-      mean: 72.5,
-      stdDev: 11.2,
-      harshness: "MODERATE",
-      isCalibrated: true,
-    },
-    {
-      evaluatorId: "evr_5",
-      name: "Prof. David Miller",
-      email: "miller@evaluation.hacktrack.edu",
-      evaluationCount: 15,
-      submittedCount: 14,
-      mean: 62.0,
-      stdDev: 14.5,
-      harshness: "HARSH",
-      isCalibrated: false,
-    },
-  ]);
+  // Evaluator calibration stats, loaded from the live leaderboard.
+  const [evaluators, setEvaluators] = useState<EvaluatorStatItem[]>([]);
 
-  // Ranked Teams Data
-  const [rankedTeams, setRankedTeams] = useState<RankedTeamItem[]>([
-    {
-      teamId: "tm_a",
-      teamName: "QuantumForge AI",
-      regCode: "HT26-T001",
-      track: "AI/ML & Edge Computing",
-      reviewCount: 3,
-      rawMean: 80.0, // Hand-calc acceptance: (70 + 80 + 90) / 3 = 80.0
-      normalizedScore: 75.0, // Hand-calc acceptance: (77.5 + 70.0 + 77.5) / 3 = 75.0
-      rawRank: 2,
-      normalizedRank: 3,
-      rankShift: -1,
-      isOutlier: true, // Spread: 90 - 70 = 20 pts (Outlier Flag)
-      scores: [70.0, 80.0, 90.0],
-      tieBreakReason: "Normalized parity; sorted via Primary Criterion (Problem Relevance: 24/25)",
-    },
-    {
-      teamId: "tm_b",
-      teamName: "NeuralMesh Bio",
-      regCode: "HT26-T002",
-      track: "Healthcare & Life Sciences",
-      reviewCount: 3,
-      rawMean: 74.0, // Graded by harsh evaluators (65.0, 62.0)
-      normalizedScore: 82.4, // Normalized up due to evaluator harshness offset!
-      rawRank: 5,
-      normalizedRank: 1,
-      rankShift: 4, // +4 rank shift due to normalization
-      isOutlier: false,
-      scores: [72.0, 75.0, 75.0],
-      tieBreakReason: "Clear normalized leader",
-    },
-    {
-      teamId: "tm_c",
-      teamName: "VeriChain Identity",
-      regCode: "HT26-T003",
-      track: "Cybersecurity & Web3",
-      reviewCount: 3,
-      rawMean: 84.0, // Graded by lenient evaluators (85.0)
-      normalizedScore: 78.1, // Normalized down
-      rawRank: 1,
-      normalizedRank: 2,
-      rankShift: -1,
-      isOutlier: false,
-      scores: [83.0, 84.0, 85.0],
-      tieBreakReason: "Tie broken: Reviewer variance (std-dev 0.81 vs 1.63)",
-    },
-    {
-      teamId: "tm_d",
-      teamName: "TerraPulse IoT",
-      regCode: "HT26-T004",
-      track: "Sustainability & CleanTech",
-      reviewCount: 3,
-      rawMean: 71.0,
-      normalizedScore: 71.8,
-      rawRank: 4,
-      normalizedRank: 4,
-      rankShift: 0,
-      isOutlier: false,
-      scores: [70.0, 71.0, 72.0],
-    },
-    {
-      teamId: "tm_e",
-      teamName: "AeroDynamics Cloud",
-      regCode: "HT26-T005",
-      track: "Cloud & Distributed Systems",
-      reviewCount: 3,
-      rawMean: 76.0,
-      normalizedScore: 68.5,
-      rawRank: 3,
-      normalizedRank: 5,
-      rankShift: -2,
-      isOutlier: true, // Reviewer divergence: [60, 78, 90] -> spread 30
-      scores: [60.0, 78.0, 90.0],
-      tieBreakReason: "Reviewer divergence flagged for 4th review",
-    },
-  ]);
+  // Ranked teams come straight from the live normalization leaderboard.
+  const [rankedTeams, setRankedTeams] = useState<RankedTeamItem[]>([]);
 
-  // Calibration Benchmark Data
-  const [calibrationSamples] = useState([
-    {
-      id: "cal_1",
-      title: "Sample A: Decentralized Autonomous Cold-Chain Storage",
-      groundTruthScore: 78.0,
-      evaluatorSpread: "65 - 88",
-      status: "COMPLETED",
-      varianceScore: 5.2,
-    },
-    {
-      id: "cal_2",
-      title: "Sample B: LLM-Assisted Automated Radiography Triage",
-      groundTruthScore: 84.5,
-      evaluatorSpread: "80 - 90",
-      status: "COMPLETED",
-      varianceScore: 3.1,
-    },
-    {
-      id: "cal_3",
-      title: "Sample C: Hybrid Solar-Thermal Desalination Controller",
-      groundTruthScore: 68.0,
-      evaluatorSpread: "60 - 75",
-      status: "COMPLETED",
-      varianceScore: 4.8,
-    },
-  ]);
+  // Calibration benchmark samples derive from real calibration-run evaluations.
+  const [calibrationSamples, setCalibrationSamples] = useState<CalibrationSample[]>([]);
 
   // Modal States
   const [allocateModalOpen, setAllocateModalOpen] = useState(false);
@@ -339,35 +173,81 @@ export default function CoordinatorEvaluationsPage() {
   const [divergenceModalOpen, setDivergenceModalOpen] = useState(false);
   const [divergentTeam, setDivergentTeam] = useState<RankedTeamItem | null>(null);
 
-  // Fetch real data on mount or event change
+  const [leaderboardSummary, setLeaderboardSummary] = useState<LeaderboardSummary>({
+    totalAssigned: 0,
+    totalSubmitted: 0,
+    completionPercent: 100,
+    outlierCount: 0,
+  });
+
+  // Load real event stages for the edition once on mount.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/coordinator/edition-data?slug=${editionSlug}`);
+        if (!res.ok) throw new Error("Failed to load edition stages");
+        const data = await res.json();
+        if (!active) return;
+        const loadedEvents: EventItem[] = (data.edition?.events || []).map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          slug: e.slug,
+          sequenceIndex: e.sequenceIndex,
+          reviewType: e.reviewType,
+          status: e.status,
+          evaluatorCountPerTeam: e.evaluatorCountPerTeam,
+          feedbackReleased: e.feedbackReleased,
+          isCalibrationActive: e.isCalibrationActive,
+        }));
+        setEvents(loadedEvents);
+        if (loadedEvents.length > 0) {
+          setSelectedEventId((prev) =>
+            prev && loadedEvents.some((ev) => ev.id === prev) ? prev : loadedEvents[0].id
+          );
+        }
+      } catch (err: any) {
+        setAlert({ type: "error", msg: err?.message || "Could not load event stages." });
+      } finally {
+        if (active) setEventsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [editionSlug]);
+
+  // Load the live leaderboard, evaluator stats, and calibration samples.
   useEffect(() => {
     async function loadEventLeaderboard() {
+      if (!selectedEventId) return;
       try {
         const res = await fetch(
           `/api/coordinator/scoring/leaderboard?eventId=${selectedEventId}&edition=${editionSlug}`
         );
-        if (res.ok) {
-          const data = await res.json();
-          if (data.event) {
-            setEvents((prev) =>
-              prev.map((e) =>
-                e.id === data.event.id
-                  ? {
-                      ...e,
-                      feedbackReleased: data.event.feedbackReleased,
-                      isCalibrationActive: data.event.isCalibrationActive,
-                      evaluatorCountPerTeam: data.event.evaluatorCountPerTeam,
-                    }
-                  : e
-              )
-            );
-          }
-          if (data.evaluatorStats && data.evaluatorStats.length > 0) {
-            setEvaluators(data.evaluatorStats);
-          }
-          if (data.rankedTeams && data.rankedTeams.length > 0) {
-            setRankedTeams(data.rankedTeams);
-          }
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.event) {
+          setEvents((prev) =>
+            prev.map((e) =>
+              e.id === data.event.id
+                ? {
+                    ...e,
+                    feedbackReleased: data.event.feedbackReleased,
+                    isCalibrationActive: data.event.isCalibrationActive,
+                    evaluatorCountPerTeam: data.event.evaluatorCountPerTeam,
+                  }
+                : e
+            )
+          );
+        }
+        setEvaluators(mapEvaluatorStats(data.evaluatorStats));
+        setRankedTeams(mapRankedTeams(data.rankedTeams));
+        if (Array.isArray(data.calibrationSamples)) {
+          setCalibrationSamples(data.calibrationSamples);
+        }
+        if (data.summary) {
+          setLeaderboardSummary(data.summary);
         }
       } catch (err) {
         console.error("Failed to fetch live leaderboard", err);
@@ -377,17 +257,11 @@ export default function CoordinatorEvaluationsPage() {
     loadEventLeaderboard();
   }, [selectedEventId, editionSlug]);
 
-  // Compute summary stats
-  const totalAssigned = useMemo(
-    () => evaluators.reduce((sum, ev) => sum + (ev.evaluationCount || 0), 0),
-    [evaluators]
-  );
-  const totalSubmitted = useMemo(
-    () => evaluators.reduce((sum, ev) => sum + (ev.submittedCount ?? ev.evaluationCount), 0),
-    [evaluators]
-  );
-  const completionRate = totalAssigned > 0 ? Math.round((totalSubmitted / totalAssigned) * 100) : 100;
-  const outlierCount = useMemo(() => rankedTeams.filter((t) => t.isOutlier).length, [rankedTeams]);
+  // Summary stats come from the real leaderboard payload.
+  const totalAssigned = leaderboardSummary.totalAssigned;
+  const totalSubmitted = leaderboardSummary.totalSubmitted;
+  const completionRate = leaderboardSummary.completionPercent;
+  const outlierCount = leaderboardSummary.outlierCount;
 
   // Filtered leaderboard
   const filteredTeams = useMemo(() => {
@@ -534,6 +408,35 @@ export default function CoordinatorEvaluationsPage() {
       setIsReopening(false);
     }
   };
+
+  if (eventsLoading) {
+    return (
+      <CoordinatorShell
+        title="Evaluations & Scoring Console"
+        description="Loading the real stage configuration…"
+      >
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <div className="text-sm font-semibold text-slate-500 animate-pulse">
+            Loading evaluation stages…
+          </div>
+        </div>
+      </CoordinatorShell>
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <CoordinatorShell
+        title="Evaluations & Scoring Console"
+        description="No evaluation configuration found."
+      >
+        <Alert variant="warning" title="No event stages configured">
+          This edition has no event stages yet. Configure the pipeline in the Events settings
+          before managing evaluations.
+        </Alert>
+      </CoordinatorShell>
+    );
+  }
 
   return (
     <CoordinatorShell
@@ -834,7 +737,18 @@ export default function CoordinatorEvaluationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredTeams.map((team) => (
+                {filteredTeams.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="px-4 py-12 text-center text-sm text-slate-500"
+                    >
+                      No evaluations have been submitted for this stage yet. Scores appear here as
+                      soon as reviewers submit.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTeams.map((team) => (
                   <tr
                     key={team.teamId}
                     className={clsx(
@@ -952,7 +866,8 @@ export default function CoordinatorEvaluationsPage() {
                       </ActionButton>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -995,12 +910,23 @@ export default function CoordinatorEvaluationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {evaluators.map((ev) => (
+                {evaluators.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-12 text-center text-sm text-slate-500"
+                    >
+                      No reviewers have been assigned for this stage yet. Run
+                      Auto-Allocate to build the reviewer workload.
+                    </td>
+                  </tr>
+                ) : (
+                  evaluators.map((ev) => (
                   <tr key={ev.evaluatorId} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-4">
                       <div>
                         <div className="font-bold text-slate-900">{ev.name || ev.evaluatorId}</div>
-                        <div className="text-xs text-slate-500">{ev.email || "evaluator@hacktrack.edu"}</div>
+                        <div className="text-xs text-slate-500">{ev.email || "—"}</div>
                       </div>
                     </td>
 
@@ -1052,7 +978,8 @@ export default function CoordinatorEvaluationsPage() {
                       </span>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1073,7 +1000,18 @@ export default function CoordinatorEvaluationsPage() {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-              {calibrationSamples.map((sample) => (
+              {calibrationSamples.length === 0 ? (
+                <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center">
+                  <p className="text-sm font-bold text-slate-700">
+                    No calibration benchmarks recorded
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Calibration samples appear here once evaluators complete the standard benchmark
+                    round for this stage.
+                  </p>
+                </div>
+              ) : (
+                calibrationSamples.map((sample) => (
                 <div key={sample.id} className="rounded-lg border border-slate-200 p-4 bg-slate-50">
                   <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
                     {sample.id}
@@ -1096,7 +1034,8 @@ export default function CoordinatorEvaluationsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

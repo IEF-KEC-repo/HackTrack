@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CoordinatorShell } from "@/components/coordinator/CoordinatorShell";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -18,48 +18,43 @@ interface AuditLogItem {
 }
 
 export default function AuditTrailPage() {
-  const [logs] = useState<AuditLogItem[]>([
-    {
-      id: "log_1",
-      timestamp: "2026-10-01 10:45:12",
-      actor: "coord.manage@hacktrack.edu",
-      action: "CPR_COUNT_UPDATED",
-      entityType: "Edition",
-      entityId: "ht26",
-      previousState: JSON.stringify({ previousCprCount: 3 }, null, 2),
-      newState: JSON.stringify({ newCprCount: 4 }, null, 2),
-    },
-    {
-      id: "log_2",
-      timestamp: "2026-10-01 10:40:05",
-      actor: "coord.manage@hacktrack.edu",
-      action: "RUBRIC_CONFIGURED",
-      entityType: "Rubric",
-      entityId: "rub_ideathon",
-      previousState: JSON.stringify({ criteriaCount: 3, totalWeight: 100 }, null, 2),
-      newState: JSON.stringify({ criteriaCount: 4, totalWeight: 100, anchorsConfigured: true }, null, 2),
-    },
-    {
-      id: "log_3",
-      timestamp: "2026-10-01 10:30:20",
-      actor: "coord.manage@hacktrack.edu",
-      action: "CSV_BULK_USERS_IMPORTED",
-      entityType: "Invitation",
-      entityId: "ht26",
-      previousState: null,
-      newState: JSON.stringify({ totalImported: 450, errorCount: 0, roles: "PARTICIPANT, MENTOR" }, null, 2),
-    },
-    {
-      id: "log_4",
-      timestamp: "2026-10-01 10:15:00",
-      actor: "superadmin@hacktrack.edu",
-      action: "EDITION_CLONED",
-      entityType: "Edition",
-      entityId: "ht26",
-      previousState: JSON.stringify({ template: "ht25" }, null, 2),
-      newState: JSON.stringify({ newEdition: "ht26", stagesCloned: 7 }, null, 2),
-    },
-  ]);
+  // Audit trail loaded live from recorded audit logs (no fabricated entries).
+  const [logs, setLogs] = useState<AuditLogItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logsError, setLogsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/coordinator/audit-logs");
+        if (!res.ok) throw new Error("Failed to load the audit trail.");
+        const data = await res.json();
+        if (!active) return;
+        setLogs(
+          (data.logs || []).map((log: any) => ({
+            id: log.id,
+            timestamp: log.createdAt
+              ? new Date(log.createdAt).toISOString().slice(0, 19).replace("T", " ")
+              : "—",
+            actor: log.actor?.email || "System",
+            action: log.action,
+            entityType: log.entityType,
+            entityId: log.entityId,
+            previousState: log.previousState ?? null,
+            newState: log.newState ?? null,
+          }))
+        );
+      } catch (err: any) {
+        if (active) setLogsError(err?.message || "Failed to load the audit trail.");
+      } finally {
+        if (active) setLogsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
 
@@ -97,7 +92,26 @@ export default function AuditTrailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {logs.map((item) => (
+                {logsLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
+                      Loading the live audit trail…
+                    </td>
+                  </tr>
+                ) : logsError ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-rose-600">
+                      {logsError}
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
+                      No audited operations recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50">
                     <td className="px-6 py-3.5 font-mono text-slate-500">{item.timestamp}</td>
                     <td className="px-6 py-3.5 font-medium text-slate-900">{item.actor}</td>
@@ -115,7 +129,8 @@ export default function AuditTrailPage() {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>

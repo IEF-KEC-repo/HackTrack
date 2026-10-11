@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CoordinatorShell } from "@/components/coordinator/CoordinatorShell";
 import { ActionButton } from "@/components/coordinator/ActionButton";
 import { Button } from "@/components/ui/Button";
@@ -20,15 +20,10 @@ interface MemberItem {
 }
 
 export default function UsersRosterPage() {
-  const [members, setMembers] = useState<MemberItem[]>([
-    { id: "m1", name: "Dr. Evelyn Reed", email: "superadmin@hacktrack.edu", role: "SUPER_ADMIN", joinedAt: "2026-08-01" },
-    { id: "m2", name: "Marcus Vance", email: "coord.manage@hacktrack.edu", role: "COORDINATOR_MANAGE", joinedAt: "2026-08-01" },
-    { id: "m3", name: "Dean Sarah Jenkins", email: "coord.view@hacktrack.edu", role: "COORDINATOR_VIEW", joinedAt: "2026-08-01" },
-    { id: "m4", name: "Alex Rivera", email: "evaluator@hacktrack.edu", role: "EVALUATOR", joinedAt: "2026-08-05" },
-    { id: "m5", name: "Prof. Alan Turing", email: "mentor@hacktrack.edu", role: "MENTOR", joinedAt: "2026-08-05" },
-    { id: "m6", name: "Priya Sharma", email: "lead@hacktrack.edu", role: "PARTICIPANT", teamName: "QuantumForge", joinedAt: "2026-08-10" },
-    { id: "m7", name: "Liam O'Connor", email: "member@hacktrack.edu", role: "PARTICIPANT", teamName: "QuantumForge", joinedAt: "2026-08-10" },
-  ]);
+  // Roster loaded live from real edition memberships + pending invitations.
+  const [members, setMembers] = useState<MemberItem[]>([]);
+  const [editionId, setEditionId] = useState("");
+  const [membersLoading, setMembersLoading] = useState(true);
 
   const [filterRole, setFilterRole] = useState("ALL");
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -37,33 +32,78 @@ export default function UsersRosterPage() {
   const [inviteName, setInviteName] = useState("");
   const [notification, setNotification] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
+  const loadRoster = async () => {
+    try {
+      const res = await fetch("/api/coordinator/edition-data?slug=ht26");
+      if (!res.ok) throw new Error("Failed to load the roster.");
+      const data = await res.json();
+      const edition = data.edition;
+      if (!edition) return;
+      setEditionId(edition.id);
+      const roster: MemberItem[] = (edition.memberships || []).map((m: any) => ({
+        id: `${m.userId}`,
+        name: m.user?.name || m.userId,
+        email: m.user?.email || "",
+        role: m.role,
+        joinedAt: m.createdAt ? new Date(m.createdAt).toISOString().slice(0, 10) : "—",
+      }));
+      const pending: MemberItem[] = (edition.invitations || []).map((inv: any) => ({
+        id: `inv_${inv.id}`,
+        name: "Invited User",
+        email: inv.email,
+        role: inv.role,
+        joinedAt: "Pending Invite",
+      }));
+      setMembers([...roster, ...pending]);
+    } catch (err: any) {
+      setNotification({ type: "error", msg: err?.message || "Failed to load the roster." });
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRoster();
+  }, []);
+
   const filtered = members.filter((m) => {
     if (filterRole === "ALL") return true;
     return m.role === filterRole;
   });
 
-  const handleIssueInvite = () => {
+  const handleIssueInvite = async () => {
     if (!inviteEmail || !inviteEmail.includes("@")) {
       setNotification({ type: "error", msg: "Please enter a valid email address." });
       return;
     }
+    if (!editionId) {
+      setNotification({ type: "error", msg: "Edition context is not loaded yet. Please retry." });
+      return;
+    }
 
-    const newMember: MemberItem = {
-      id: `usr_${Date.now()}`,
-      name: inviteName || "Invited User",
-      email: inviteEmail.toLowerCase().trim(),
-      role: inviteRole,
-      joinedAt: "Pending Invite",
-    };
+    try {
+      const res = await fetch("/api/coordinator/assign-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editionId,
+          email: inviteEmail.toLowerCase().trim(),
+          role: inviteRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to issue invitation.");
 
-    setMembers([newMember, ...members]);
-    setInviteModalOpen(false);
-    setInviteEmail("");
-    setInviteName("");
-    setNotification({
-      type: "success",
-      msg: `Issued invitation for ${inviteEmail} with role "${inviteRole}".`,
-    });
+      setInviteModalOpen(false);
+      setInviteEmail("");
+      setInviteName("");
+      setNotification({
+        type: "success",
+        msg: `Invitation issued for ${inviteEmail} with role "${inviteRole}".`,
+      });
+    } catch (err: any) {
+      setNotification({ type: "error", msg: err.message || "Failed to issue invitation." });
+    }
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -109,7 +149,7 @@ export default function UsersRosterPage() {
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
               options={[
-                { value: "ALL", label: "All Roles (7 Members)" },
+                { value: "ALL", label: `All Roles (${members.length} Members)` },
                 { value: "COORDINATOR_MANAGE", label: "Coordinator (Manage)" },
                 { value: "COORDINATOR_VIEW", label: "Coordinator (View-Only)" },
                 { value: "EVALUATOR", label: "Evaluators" },
@@ -135,7 +175,20 @@ export default function UsersRosterPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {filtered.map((item) => (
+                {membersLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
+                      Loading the live roster…
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-500">
+                      No members match this role yet.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50">
                     <td className="px-6 py-4">
                       <p className="font-semibold text-slate-900">{item.name}</p>
@@ -162,7 +215,8 @@ export default function UsersRosterPage() {
                       </ActionButton>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
