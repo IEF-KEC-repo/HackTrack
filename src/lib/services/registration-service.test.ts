@@ -3,6 +3,9 @@ import {
   isRegistrationOpenForEventStatus,
   validateTeamLeadRegistration,
   REGISTRATION_OPEN_EVENT_STATUSES,
+  ALLOWED_REGISTRATION_DOMAIN,
+  REGISTRATION_DOMAIN_ERROR,
+  isAllowedRegistrationEmail,
 } from "./registration-service";
 
 describe("Public Team-Lead self-registration", () => {
@@ -90,6 +93,46 @@ describe("Public Team-Lead self-registration", () => {
       const result = validateTeamLeadRegistration({ ...valid, password: "short" });
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/at least 8/i);
+    });
+  });
+
+  // ----------------------------------------------------
+  // 3. INSTITUTIONAL DOMAIN GATE (kongu.edu only)
+  // ----------------------------------------------------
+  describe("kongu.edu domain gate", () => {
+    const valid = {
+      teamName: "QuantumForge",
+      name: "Ada Lovelace",
+      password: "supersecret",
+    };
+
+    it("rejects a non-kongu.edu email on the public registration form", () => {
+      const result = validateTeamLeadRegistration({
+        ...valid,
+        email: "ada@gmail.com",
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe(REGISTRATION_DOMAIN_ERROR);
+    });
+
+    it("accepts a kongu.edu email in any case", () => {
+      expect(
+        validateTeamLeadRegistration({ ...valid, email: "Ada.Lovelace@KONGU.EDU" })
+          .valid
+      ).toBe(true);
+      expect(isAllowedRegistrationEmail("ada@Kongu.Edu")).toBe(true);
+    });
+
+    it("does not accept look-alike or sub-domains", () => {
+      expect(isAllowedRegistrationEmail("ada@sub.kongu.edu")).toBe(false);
+      expect(isAllowedRegistrationEmail("ada@kongu.edu.evil.com")).toBe(false);
+      expect(isAllowedRegistrationEmail("ada@notkongu.edu")).toBe(false);
+      expect(isAllowedRegistrationEmail("ada@kongu.com")).toBe(false);
+      expect(isAllowedRegistrationEmail("ada@kongu.edu ")).toBe(true);
+    });
+
+    it("exposes the allowed registration domain as kongu.edu", () => {
+      expect(ALLOWED_REGISTRATION_DOMAIN).toBe("kongu.edu");
     });
   });
 });

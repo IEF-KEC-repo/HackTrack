@@ -93,6 +93,29 @@ export async function getRegistrationWindow(): Promise<{
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * HackTrack is a single-college event, so the open, unvetted public self-signup
+ * path is restricted to the host institution's domain. Staff invites
+ * (Coordinator/Evaluator/Mentor) and staff-issued participant invites are
+ * vetted when they are issued, so they are deliberately exempt from this gate.
+ */
+export const ALLOWED_REGISTRATION_DOMAIN = "kongu.edu";
+
+export const REGISTRATION_DOMAIN_ERROR =
+  "Registration is open to kongu.edu email addresses only.";
+
+/**
+ * Returns true when the email's domain is exactly the allowed registration
+ * domain (case-insensitive). Sub-domains such as `sub.kongu.edu` — and domains
+ * that merely end in the allowed one, such as `kongu.edu.evil.com` — do not match.
+ */
+export function isAllowedRegistrationEmail(email: string): boolean {
+  const normalized = (email ?? "").trim().toLowerCase();
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex === -1) return false;
+  return normalized.slice(atIndex + 1) === ALLOWED_REGISTRATION_DOMAIN;
+}
+
 export interface TeamLeadRegistrationInput {
   teamName: string;
   name: string;
@@ -121,6 +144,9 @@ export function validateTeamLeadRegistration(
   }
   if (!EMAIL_REGEX.test(email)) {
     return { valid: false, error: "A valid email address is required." };
+  }
+  if (!isAllowedRegistrationEmail(email)) {
+    return { valid: false, error: REGISTRATION_DOMAIN_ERROR };
   }
   if (password.length < 8) {
     return { valid: false, error: "Password must be at least 8 characters" };
@@ -187,6 +213,13 @@ export async function registerTeamLead(
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
   const password = input.password;
+
+  // Server-side domain gate at the account-creation boundary. The route already
+  // validates the form, but enforcing it here too guarantees no caller can mint
+  // a public participant account from a non-institutional address.
+  if (!isAllowedRegistrationEmail(email)) {
+    throw new RegistrationError(REGISTRATION_DOMAIN_ERROR, 400);
+  }
 
   const window = await getRegistrationWindow();
 
