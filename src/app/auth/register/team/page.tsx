@@ -32,10 +32,12 @@ export default function TeamLeadRegistrationPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const [checkingWindow, setCheckingWindow] = useState(true);
+  // Optimistic: render the form immediately; the effect below switches to the
+  // "closed" notice only if the edition's registration event says so. The
+  // server-side gate remains authoritative either way.
   const [registrationOpen, setRegistrationOpen] = useState(true);
 
-  // Mirror the server-side gate in the UI. The server remains authoritative.
+  // Mirror the server-side gate in the UI.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/public/timeline", { cache: "no-store" })
@@ -55,9 +57,6 @@ export default function TeamLeadRegistrationPage() {
         // If the public timeline can't be read, don't block the form — the
         // register-team endpoint still enforces the real gate.
         if (!cancelled) setRegistrationOpen(true);
-      })
-      .finally(() => {
-        if (!cancelled) setCheckingWindow(false);
       });
     return () => {
       cancelled = true;
@@ -106,11 +105,7 @@ export default function TeamLeadRegistrationPage() {
           </p>
         </div>
 
-        {checkingWindow ? (
-          <p className="py-6 text-center text-sm text-slate-500" role="status">
-            Checking registration window…
-          </p>
-        ) : !registrationOpen ? (
+        {!registrationOpen ? (
           <div className="space-y-4">
             <div
               role="alert"
