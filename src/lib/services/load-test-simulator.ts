@@ -186,7 +186,7 @@ export async function executeScaleLoadSimulation(
       rt.reviewerScores && rt.reviewerScores.length > 0
         ? Math.round(
             (rt.reviewerScores.reduce(
-              (sum, s) => sum + (s.normalizedScore - 70.0) / 15.0,
+              (sum, s) => sum + (s.normalizedScore - 50.0) / 15.0,
               0
             ) /
               rt.reviewerScores.length) *

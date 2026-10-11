@@ -82,13 +82,37 @@ export function generateServerStoredFilename(
 /**
  * Pure function: Validates an uploaded file against event settings, size limit, and allowed types.
  */
+function hasAllowedMagicByte(buffer: Buffer, extension: string): boolean {
+  if (buffer.length === 0) return false;
+  const header = buffer.subarray(0, 4);
+
+  switch (extension) {
+    case "pdf":
+      return header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46; // %PDF
+    case "png":
+      return header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47; // PNG
+    case "jpg":
+    case "jpeg":
+      return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    case "zip":
+      // PK ZIP
+      return header[0] === 0x50 && header[1] === 0x4b;
+    case "docx":
+      // ZIP based OOXML
+      return header[0] === 0x50 && header[1] === 0x4b;
+    default:
+      return true;
+  }
+}
+
 export function validateFileUpload(params: {
   eventUploadsEnabled: boolean;
   fileSizeBytes: number;
   mimeType: string;
   filename: string;
+  fileBuffer?: Buffer;
 }): { valid: boolean; error?: string } {
-  const { eventUploadsEnabled, fileSizeBytes, mimeType, filename } = params;
+  const { eventUploadsEnabled, fileSizeBytes, mimeType, filename, fileBuffer } = params;
 
   if (!eventUploadsEnabled) {
     return {
@@ -127,6 +151,15 @@ export function validateFileUpload(params: {
       valid: false,
       error: `Disallowed MIME type: ${mimeType}. Allowed: PDF, ZIP, PNG, JPG, DOCX.`,
     };
+  }
+
+  if (fileBuffer) {
+    if (!hasAllowedMagicByte(fileBuffer, extension)) {
+      return {
+        valid: false,
+        error: `Content verification failed: file content does not match expected format for .${extension}.`,
+      };
+    }
   }
 
   return { valid: true };

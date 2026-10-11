@@ -20,6 +20,7 @@ export interface TeamScoreSummary {
   teamId: string;
   rawAverage: number;
   normalizedScore: number;
+  displayScore?: number;
   reviewerScores: Array<{
     evaluatorId: string;
     rawScore: number;
@@ -42,7 +43,7 @@ export interface NormalizationOutput {
 
 /**
  * Pure statistical function: Computes per-evaluator Z-score normalization (ADR-006 & Decision D-01).
- * Standardizes raw scores to cohort baseline: Mean = 70.0, StdDev = 15.0.
+ * Standardizes raw scores to cohort baseline: Mean = 50.0, StdDev = 15.0.
  */
 export function computeZScoreNormalization(params: {
   evaluations: EvaluationRecord[];
@@ -56,7 +57,7 @@ export function computeZScoreNormalization(params: {
 }): NormalizationOutput {
   const {
     evaluations,
-    baselineMean = 70.0,
+    baselineMean = 50.0,
     baselineStdDev = 15.0,
     outlierStdDevThreshold = 15.0,
     outlierRangeThreshold = 20.0,
@@ -217,6 +218,21 @@ export function computeZScoreNormalization(params: {
   const rawRankMap = new Map<string, number>();
   byRaw.forEach((t, i) => rawRankMap.set(t.teamId, i + 1));
 
+  // Compute per-event display scores (min-max of normalizedScore, display-only)
+  const normVals = rankedList.map((t) => t.normalizedScore);
+  const minNorm = normVals.length ? Math.min(...normVals) : 0;
+  const maxNorm = normVals.length ? Math.max(...normVals) : 100;
+  const denom = maxNorm - minNorm;
+  for (const t of rankedList) {
+    let ds = t.normalizedScore;
+    if (denom > 0) {
+      ds = ((t.normalizedScore - minNorm) / denom) * 100;
+    } else {
+      ds = 100;
+    }
+    t.displayScore = Math.round(ds * 10) / 10;
+  }
+
   // Normalized Ranks with Section 4.1 Tie-Breaking Logic
   const byNorm = [...rankedList].sort((a, b) => {
     // 0. Primary Sort: Normalized Score (Descending)
@@ -264,6 +280,18 @@ export function computeZScoreNormalization(params: {
     teamSummaries,
     rankedTeams,
   };
+}
+
+// Test helper to compute display scores per event (monotonic transform)
+export function computeDisplayScoresPerEvent(normalizedScores: number[]): number[] {
+  if (normalizedScores.length === 0) return [];
+  const minNorm = Math.min(...normalizedScores);
+  const maxNorm = Math.max(...normalizedScores);
+  const denom = maxNorm - minNorm;
+  return normalizedScores.map((s) => {
+    const ds = denom > 0 ? ((s - minNorm) / denom) * 100 : 100;
+    return Math.round(ds * 10) / 10;
+  });
 }
 
 /**

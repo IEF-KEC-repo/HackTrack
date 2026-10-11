@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const session = toSessionContext(payload);
 
   if (!session) {
-    // For demo/dev allow fallback if headers say test
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   try {
@@ -60,21 +60,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Validate File (Size, Extension, MIME type)
+    // 4. Read File Buffer first for content sniffing
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
     const validation = validateFileUpload({
       eventUploadsEnabled: uploadsEnabled,
       fileSizeBytes: file.size,
       mimeType: file.type,
       filename: file.name,
+      fileBuffer: buffer,
     });
 
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // 4. Read File Buffer & Save Server-Side with Team Registration Code
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
+    // 5. Save Server-Side with Team Registration Code
     const artifact = await saveUploadedFile({
       teamId: team.id,
       regCode: team.regCode,

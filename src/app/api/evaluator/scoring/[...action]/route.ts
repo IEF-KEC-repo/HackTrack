@@ -17,20 +17,10 @@ export async function GET(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  let evaluatorId = session?.userId;
-
-  // Demo / Dev fallback
-  if (!evaluatorId) {
-    const demoEval = await prisma.user.findUnique({
-      where: { email: "evaluator@hacktrack.edu" },
-      select: { id: true },
-    });
-    evaluatorId = demoEval?.id;
-  }
-
-  if (!evaluatorId) {
+  if (!session?.userId) {
     return NextResponse.json({ error: "Evaluator authentication required" }, { status: 401 });
   }
+  const evaluatorId = session.userId;
 
   try {
     // ----------------------------------------------------
@@ -208,14 +198,10 @@ export async function POST(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  let evaluatorId = session?.userId;
-  if (!evaluatorId) {
-    const demoEval = await prisma.user.findUnique({
-      where: { email: "evaluator@hacktrack.edu" },
-      select: { id: true },
-    });
-    evaluatorId = demoEval?.id || "evaluator_demo";
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Evaluator authentication required" }, { status: 401 });
   }
+  const evaluatorId = session.userId;
 
   try {
     // ----------------------------------------------------

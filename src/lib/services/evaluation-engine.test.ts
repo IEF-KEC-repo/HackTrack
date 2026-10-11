@@ -220,51 +220,51 @@ describe("Evaluation, Scoring & Normalization Engine", () => {
     /**
      * ACCEPTANCE CRITERIA TEST CASE:
      * Three reviewers score a team at Ideathon:
-     * Reviewer 1 (μ=65, σ=10): raw 70.0 -> Z = (70 - 65)/10 = +0.50 -> Snorm = 70 + 15 * 0.50 = 77.5
-     * Reviewer 2 (μ=80, σ=8):  raw 80.0 -> Z = (80 - 80)/8  =  0.00 -> Snorm = 70 + 15 * 0.00 = 70.0
-     * Reviewer 3 (μ=85, σ=10): raw 90.0 -> Z = (90 - 85)/10 = +0.50 -> Snorm = 70 + 15 * 0.50 = 77.5
-     * Team Raw Average = (70.0 + 80.0 + 90.0) / 3 = 80.0
-     * Final Normalized Score = (77.5 + 70.0 + 77.5) / 3 = 75.0
-     */
-    it("satisfies the exact hand-calculated acceptance test (Team Raw Avg = 80.0, Final Norm = 75.0)", () => {
-      const evaluations: EvaluationRecord[] = [
-        { id: "e1", teamId: "target_team", evaluatorId: "rev_1", rawScore: 70.0, status: "SUBMITTED" },
-        { id: "e2", teamId: "target_team", evaluatorId: "rev_2", rawScore: 80.0, status: "SUBMITTED" },
-        { id: "e3", teamId: "target_team", evaluatorId: "rev_3", rawScore: 90.0, status: "SUBMITTED" },
-      ];
+      * Reviewer 1 (μ=65, σ=10): raw 70.0 -> Z = (70 - 65)/10 = +0.50 -> Snorm = 50 + 15 * 0.50 = 57.5
+      * Reviewer 2 (μ=80, σ=8):  raw 80.0 -> Z = (80 - 80)/8  =  0.00 -> Snorm = 50 + 15 * 0.00 = 50.0
+      * Reviewer 3 (μ=85, σ=10): raw 90.0 -> Z = (90 - 85)/10 = +0.50 -> Snorm = 50 + 15 * 0.50 = 57.5
+      * Team Raw Average = (70.0 + 80.0 + 90.0) / 3 = 80.0
+      * Final Normalized Score = (57.5 + 50.0 + 57.5) / 3 = 55.0
+      */
+     it("satisfies the exact hand-calculated acceptance test (Team Raw Avg = 80.0, Final Norm = 55.0)", () => {
+       const evaluations: EvaluationRecord[] = [
+         { id: "e1", teamId: "target_team", evaluatorId: "rev_1", rawScore: 70.0, status: "SUBMITTED" },
+         { id: "e2", teamId: "target_team", evaluatorId: "rev_2", rawScore: 80.0, status: "SUBMITTED" },
+         { id: "e3", teamId: "target_team", evaluatorId: "rev_3", rawScore: 90.0, status: "SUBMITTED" },
+       ];
 
-      // Provide the exact evaluator distribution parameters from the acceptance specification:
-      const evaluatorStatsOverride = {
-        rev_1: { mean: 65.0, stdDev: 10.0, harshness: "HARSH" as const },
-        rev_2: { mean: 80.0, stdDev: 8.0, harshness: "MODERATE" as const },
-        rev_3: { mean: 85.0, stdDev: 10.0, harshness: "GENEROUS" as const },
-      };
+       // Provide the exact evaluator distribution parameters from the acceptance specification:
+       const evaluatorStatsOverride = {
+         rev_1: { mean: 65.0, stdDev: 10.0, harshness: "HARSH" as const },
+         rev_2: { mean: 80.0, stdDev: 8.0, harshness: "MODERATE" as const },
+         rev_3: { mean: 85.0, stdDev: 10.0, harshness: "GENEROUS" as const },
+       };
 
-      const result = computeZScoreNormalization({
-        evaluations,
-        evaluatorStatsOverride,
-        baselineMean: 70.0,
-        baselineStdDev: 15.0,
-      });
+       const result = computeZScoreNormalization({
+         evaluations,
+         evaluatorStatsOverride,
+         baselineMean: 50.0,
+         baselineStdDev: 15.0,
+       });
 
-      const summary = result.teamSummaries["target_team"];
-      expect(summary).toBeDefined();
+       const summary = result.teamSummaries["target_team"];
+       expect(summary).toBeDefined();
 
-      // Check Team Raw Average is exactly 80.0
-      expect(summary.rawAverage).toBe(80.0);
+       // Check Team Raw Average is exactly 80.0
+       expect(summary.rawAverage).toBe(80.0);
 
-      // Check Individual Normalized Scores
-      const r1Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_1");
-      const r2Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_2");
-      const r3Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_3");
+       // Check Individual Normalized Scores
+       const r1Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_1");
+       const r2Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_2");
+       const r3Score = summary.reviewerScores.find((r) => r.evaluatorId === "rev_3");
 
-      expect(r1Score?.normalizedScore).toBe(77.5);
-      expect(r2Score?.normalizedScore).toBe(70.0);
-      expect(r3Score?.normalizedScore).toBe(77.5);
+       expect(r1Score?.normalizedScore).toBe(57.5);
+       expect(r2Score?.normalizedScore).toBe(50.0);
+       expect(r3Score?.normalizedScore).toBe(57.5);
 
-      // Check Final Team Normalized Score is exactly 75.0
-      expect(summary.normalizedScore).toBe(75.0);
-    });
+       // Check Final Team Normalized Score is exactly 55.0
+       expect(summary.normalizedScore).toBe(55.0);
+     });
 
     it("correctly identifies evaluator harshness profiles from scoring data", () => {
       // Reviewer A gives lower scores (mean 62), Reviewer B gives high scores (mean 88)
@@ -292,8 +292,8 @@ describe("Evaluation, Scoring & Normalization Engine", () => {
       ];
 
       const evaluatorStatsOverride = {
-        r_harsh: { mean: 54.0, stdDev: 10.0 }, // Z = (64 - 54)/10 = +1.0 -> Snorm = 85.0
-        r_lenient: { mean: 86.0, stdDev: 10.0 }, // Z = (86 - 86)/10 = 0.0 -> Snorm = 70.0
+        r_harsh: { mean: 54.0, stdDev: 10.0 }, // Z = (64 - 54)/10 = +1.0 -> Snorm = 65.0
+        r_lenient: { mean: 86.0, stdDev: 10.0 }, // Z = (86 - 86)/10 = 0.0 -> Snorm = 50.0
       };
 
       const result = computeZScoreNormalization({
@@ -303,7 +303,7 @@ describe("Evaluation, Scoring & Normalization Engine", () => {
 
       const ranked = result.rankedTeams;
       // In raw score, team_leniently_graded (86) beat team_harshly_graded (64)
-      // In normalized score, team_harshly_graded (85.0) beats team_leniently_graded (70.0)!
+      // In normalized score, team_harshly_graded (65.0) beats team_leniently_graded (50.0)!
       expect(ranked[0].teamId).toBe("team_harshly_graded");
       expect(ranked[0].rank).toBe(1);
       expect(ranked[0].rawRank).toBe(2);

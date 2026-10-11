@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, toSessionContext, SESSION_COOKIE_NAME } from "./lib/auth";
-import { canAccessRoute, isPublicPath, getAuthorizedRedirect } from "./lib/permissions";
+import { canAccessRoute, canAccessApiRoute, isPublicPath, getAuthorizedRedirect } from "./lib/permissions";
 import { checkRateLimit, RATE_LIMIT_TIERS } from "./lib/services/rate-limiter";
 import { logger } from "./lib/logger";
 
@@ -83,7 +83,9 @@ export async function middleware(req: NextRequest) {
   // ----------------------------------------------------
   // 4. ROLE & METHOD ACCESS AUTHORIZATION
   // ----------------------------------------------------
-  const access = canAccessRoute(sessionContext, pathname, req.method);
+  const access = pathname.startsWith("/api/")
+    ? canAccessApiRoute(sessionContext, pathname, req.method)
+    : canAccessRoute(sessionContext, pathname, req.method);
 
   if (!access.allowed) {
     logger.security("Access denied by authorization policy", {

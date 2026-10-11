@@ -18,7 +18,10 @@ export async function GET(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  const fallbackUserId = session?.userId;
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const userId = session.userId;
 
   try {
     // ----------------------------------------------------
@@ -27,20 +30,12 @@ export async function GET(
     if (action === "my-team") {
       let teamId = req.nextUrl.searchParams.get("teamId");
 
-      if (!teamId && fallbackUserId) {
+      if (!teamId) {
         const membership = await prisma.teamMember.findFirst({
-          where: { userId: fallbackUserId },
+          where: { userId },
           select: { teamId: true },
         });
         teamId = membership?.teamId || null;
-      }
-
-      if (!teamId) {
-        // Fallback to first team in db for demo/testing
-        const firstTeam = await prisma.team.findFirst({
-          select: { id: true },
-        });
-        teamId = firstTeam?.id || null;
       }
 
       if (!teamId) {
@@ -100,7 +95,10 @@ export async function POST(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  const userId = session?.userId || "user_demo";
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const userId = session.userId;
 
   try {
     // ----------------------------------------------------

@@ -15,20 +15,10 @@ export async function GET(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  let mentorId = session?.userId;
-
-  // Fallback for development/demo: if not logged in or running demo, look up seeded mentor user
-  if (!mentorId) {
-    const demoMentor = await prisma.user.findUnique({
-      where: { email: "mentor@hacktrack.edu" },
-      select: { id: true },
-    });
-    mentorId = demoMentor?.id;
-  }
-
-  if (!mentorId) {
+  if (!session?.userId) {
     return NextResponse.json({ error: "Mentor authentication required" }, { status: 401 });
   }
+  const mentorId = session.userId;
 
   try {
     const edition = await prisma.edition.findUnique({
@@ -74,19 +64,10 @@ export async function POST(
   const payload = token ? await verifySessionToken(token) : null;
   const session = toSessionContext(payload);
 
-  let mentorId = session?.userId;
-
-  if (!mentorId) {
-    const demoMentor = await prisma.user.findUnique({
-      where: { email: "mentor@hacktrack.edu" },
-      select: { id: true },
-    });
-    mentorId = demoMentor?.id;
-  }
-
-  if (!mentorId) {
+  if (!session?.userId) {
     return NextResponse.json({ error: "Mentor authentication required" }, { status: 401 });
   }
+  const mentorId = session.userId;
 
   try {
     // ----------------------------------------------------

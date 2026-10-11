@@ -28,7 +28,7 @@ export interface RouteRule {
 }
 
 // ----------------------------------------------------
-// ROUTE AUTHORIZATION TABLE
+// ROUTE AUTHORIZATION TABLE (Pages)
 // ----------------------------------------------------
 export const ROUTE_RULES: RouteRule[] = [
   // Super Admin Zone
@@ -67,6 +67,12 @@ export const ROUTE_RULES: RouteRule[] = [
     allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT"],
     allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"], // COORDINATOR_VIEW read-only
   },
+  // Results page is linked from participant progress and should be readable by authenticated users
+  {
+    pattern: /^\/results(\/.*)?$/,
+    allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"],
+    allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"],
+  },
 ];
 
 // Public paths that do not require an active session
@@ -77,6 +83,9 @@ export const PUBLIC_PATHS = [
   /^\/auth\/forgot-password(\/.*)?$/,
   /^\/auth\/reset-password(\/.*)?$/,
   /^\/api\/auth(\/.*)?$/,
+  /^\/api\/health$/,
+  /^\/api\/cron\/reminders$/,
+  /^\/api\/cron\/milestone-alerts$/,
   /^\/_next(\/.*)?$/,
   /^\/favicon\.ico$/,
   /^\/public(\/.*)?$/,
@@ -173,6 +182,82 @@ export function getAuthorizedRedirect(role?: EditionRole): string {
  * Helper to check if a role is allowed to mutate event/program configuration.
  * Only SUPER_ADMIN and COORDINATOR_MANAGE can mutate; COORDINATOR_VIEW and others cannot.
  */
+// ----------------------------------------------------
+// API ROUTE AUTHORIZATION RULES
+// ----------------------------------------------------
+export const API_ROUTE_RULES: RouteRule[] = [
+  // Coordinator admin APIs
+  { pattern: /^\/api\/coordinator(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"] },
+  // Evaluator APIs
+  { pattern: /^\/api\/evaluator(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "EVALUATOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "EVALUATOR"] },
+  // Mentor APIs
+  { pattern: /^\/api\/mentor(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "MENTOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "MENTOR"] },
+  // Teams/participant APIs
+  { pattern: /^\/api\/teams(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"] },
+  { pattern: /^\/api\/team(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"] },
+  // Milestones
+  { pattern: /^\/api\/milestones(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT", "MENTOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT", "MENTOR"] },
+  // Artifacts/upload
+  { pattern: /^\/api\/artifacts(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "PARTICIPANT", "EVALUATOR"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "PARTICIPANT"] },
+  // Announcements
+  { pattern: /^\/api\/announcements(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"] },
+  // Notifications
+  { pattern: /^\/api\/notifications(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"] },
+  // Export (GET only) - exports must stay readable by any authenticated user per blueprint findings
+  { pattern: /^\/api\/export(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"] },
+  // Leaderboard
+  { pattern: /^\/api\/leaderboard(\/.*)?$/, allowedRoles: ["SUPER_ADMIN", "COORDINATOR_MANAGE", "COORDINATOR_VIEW", "EVALUATOR", "MENTOR", "PARTICIPANT"], allowMutationsFor: ["SUPER_ADMIN", "COORDINATOR_MANAGE"] },
+];
+
+export function canAccessApiRoute(
+  session: UserSessionContext | null,
+  pathname: string,
+  method: string = "GET"
+): { allowed: boolean; reason?: string } {
+  // Public API paths
+  if (/^\/api\/auth(\/.*)?$/.test(pathname) || /^\/api\/health$/.test(pathname) || /^\/api\/cron\/reminders$/.test(pathname) || /^\/api\/cron\/milestone-alerts$/.test(pathname)) {
+    return { allowed: true };
+  }
+
+  if (!session) {
+    return { allowed: false, reason: "UNAUTHENTICATED" };
+  }
+
+  if (session.globalRole === "SUPER_ADMIN" || session.editionRole === "SUPER_ADMIN") {
+    return { allowed: true };
+  }
+
+  const role = session.editionRole;
+  if (!role) {
+    return { allowed: false, reason: "NO_EDITION_MEMBERSHIP" };
+  }
+
+  const matchedRule = API_ROUTE_RULES.find((rule) => rule.pattern.test(pathname));
+  if (!matchedRule) {
+    const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
+    if (isMutation && role === "COORDINATOR_VIEW") {
+      return { allowed: false, reason: "COORDINATOR_VIEW_WRITE_BLOCKED" };
+    }
+    return { allowed: true };
+  }
+
+  if (!matchedRule.allowedRoles.includes(role)) {
+    return { allowed: false, reason: "ROLE_NOT_AUTHORIZED" };
+  }
+
+  const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
+  if (isMutation) {
+    if (role === "COORDINATOR_VIEW") {
+      return { allowed: false, reason: "COORDINATOR_VIEW_WRITE_BLOCKED" };
+    }
+    if (matchedRule.allowMutationsFor && !matchedRule.allowMutationsFor.includes(role)) {
+      return { allowed: false, reason: "MUTATION_NOT_PERMITTED_FOR_ROLE" };
+    }
+  }
+
+  return { allowed: true };
+}
+
 export function canMutateEventConfig(role?: EditionRole | string | null): boolean {
   return role === "SUPER_ADMIN" || role === "COORDINATOR_MANAGE";
 }
