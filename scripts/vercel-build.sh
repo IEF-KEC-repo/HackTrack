@@ -54,5 +54,16 @@ else
   echo "=== [vercel-build] e2e cleanup not armed - skipping ==="
 fi
 
+# One-off, sentinel-gated cleanup of the public self-registration verification
+# accounts (`e2e.lead.*@kongu.edu`) created while exercising the live
+# `/api/auth/register-team` domain-gate. Armed by the file
+# `scripts/.test-accounts-cleanup-armed`, disarmed by deleting it.
+if [ -f "scripts/.test-accounts-cleanup-armed" ] && [ "${VERCEL_ENV:-development}" = "production" ]; then
+  echo "=== [vercel-build] test-accounts cleanup armed - running scripts/cleanup-test-accounts.ts ==="
+  npx tsx scripts/cleanup-test-accounts.ts
+else
+  echo "=== [vercel-build] test-accounts cleanup not armed - skipping ==="
+fi
+
 echo "=== [vercel-build] next build ==="
 npx next build
