@@ -44,5 +44,15 @@ else
   echo "=== [vercel-build] seed skipped (pass --build-env RUN_SEED=1 to run) ==="
 fi
 
+# One-off, sentinel-gated E2E test-data cleanup. It is armed by committing the
+# file `scripts/.e2e-cleanup-armed` and disarmed by deleting it; it never runs
+# on an ordinary build. See scripts/cleanup-e2e.ts.
+if [ -f "scripts/.e2e-cleanup-armed" ] && [ "${VERCEL_ENV:-development}" = "production" ]; then
+  echo "=== [vercel-build] e2e cleanup armed - running scripts/cleanup-e2e.ts ==="
+  npx tsx scripts/cleanup-e2e.ts
+else
+  echo "=== [vercel-build] e2e cleanup not armed - skipping ==="
+fi
+
 echo "=== [vercel-build] next build ==="
 npx next build
