@@ -256,8 +256,10 @@ export default function EvaluatorCockpitPage() {
   const isLocked = activeItem?.status === "SUBMITTED";
 
   const completedCount = queue.filter((q) => q.status === "SUBMITTED").length;
-  const progressPercent =
-    queue.length > 0 ? Math.round((completedCount / queue.length) * 100) : 100;
+  const hasAssignedReviews = queue.length > 0;
+  const progressPercent = hasAssignedReviews
+    ? Math.round((completedCount / queue.length) * 100)
+    : 0;
 
   const countdown = formatCountdown(activeItem?.scheduledSlotEnd ?? null);
 
@@ -412,7 +414,11 @@ export default function EvaluatorCockpitPage() {
               <div>
                 <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">Queue Completion</span>
                 <h2 className="text-2xl font-black text-slate-900 mt-1">
-                  {queueLoading ? "Loading…" : `${completedCount} of ${queue.length} Reviews Finalized (${progressPercent}%)`}
+                  {queueLoading
+                    ? "Loading…"
+                    : hasAssignedReviews
+                    ? `${completedCount} of ${queue.length} Reviews Finalized (${progressPercent}%)`
+                    : "No reviews assigned yet"}
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Complete all assigned evaluations before the deadline for cohort normalization.

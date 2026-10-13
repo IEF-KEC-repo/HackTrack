@@ -260,7 +260,8 @@ export default function CoordinatorEvaluationsPage() {
   // Summary stats come from the real leaderboard payload.
   const totalAssigned = leaderboardSummary.totalAssigned;
   const totalSubmitted = leaderboardSummary.totalSubmitted;
-  const completionRate = leaderboardSummary.completionPercent;
+  // A completion percentage only makes sense with a non-zero denominator.
+  const completionRate = totalAssigned > 0 ? leaderboardSummary.completionPercent : null;
   const outlierCount = leaderboardSummary.outlierCount;
 
   // Filtered leaderboard
@@ -557,7 +558,9 @@ export default function CoordinatorEvaluationsPage() {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Scoring Progress
             </span>
-            <span className="text-xs font-bold text-indigo-600">{completionRate}%</span>
+            <span className="text-xs font-bold text-indigo-600">
+              {completionRate === null ? "—" : `${completionRate}%`}
+            </span>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-black text-slate-900">{totalSubmitted}</span>
@@ -566,7 +569,7 @@ export default function CoordinatorEvaluationsPage() {
           <div className="mt-3 w-full bg-slate-100 rounded-full h-2 overflow-hidden">
             <div
               className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${completionRate}%` }}
+              style={{ width: `${completionRate ?? 0}%` }}
             />
           </div>
         </div>

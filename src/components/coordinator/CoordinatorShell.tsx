@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
@@ -14,7 +14,7 @@ interface CoordinatorContextValue {
 
 const CoordinatorContext = createContext<CoordinatorContextValue>({
   isReadOnly: false,
-  role: "COORDINATOR_MANAGE",
+  role: "",
   editionSlug: "ht26",
 });
 
@@ -22,6 +22,11 @@ export const useCoordinator = () => useContext(CoordinatorContext);
 
 export interface CoordinatorShellProps {
   children: React.ReactNode;
+  /**
+   * Explicit role override. When omitted, the shell resolves the real session
+   * role from `/api/auth/me` so a COORDINATOR_VIEW session is never shown
+   * Manage-tier messaging or enabled write controls.
+   */
   userRole?: string;
   editionSlug?: string;
   title?: string;
@@ -31,14 +36,46 @@ export interface CoordinatorShellProps {
 
 export const CoordinatorShell: React.FC<CoordinatorShellProps> = ({
   children,
-  userRole = "COORDINATOR_MANAGE",
+  userRole,
   editionSlug = "ht26",
   title,
   description,
   action,
 }) => {
   const pathname = usePathname();
-  const isReadOnly = userRole === "COORDINATOR_VIEW";
+  const [sessionRole, setSessionRole] = useState<string | null>(userRole ?? null);
+
+  // Resolve the real session role when no explicit override was provided.
+  useEffect(() => {
+    if (userRole) {
+      setSessionRole(userRole);
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const json = await res.json();
+        const u = json?.user;
+        if (!active || !u) return;
+        const resolved =
+          u.globalRole === "SUPER_ADMIN" || u.editionRole === "SUPER_ADMIN"
+            ? "SUPER_ADMIN"
+            : u.editionRole ?? "COORDINATOR_VIEW";
+        setSessionRole(resolved);
+      } catch {
+        // Role is cosmetic for layout; server-side RBAC remains authoritative.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [userRole]);
+
+  const effectiveRole = userRole ?? sessionRole;
+  const roleKnown = Boolean(effectiveRole);
+  const isReadOnly = effectiveRole === "COORDINATOR_VIEW";
 
   const navItems = [
     { label: "Overview", href: "/coordinator" },
@@ -56,31 +93,41 @@ export const CoordinatorShell: React.FC<CoordinatorShellProps> = ({
   ];
 
   return (
-    <CoordinatorContext.Provider value={{ isReadOnly, role: userRole, editionSlug }}>
+    <CoordinatorContext.Provider value={{ isReadOnly, role: effectiveRole ?? "", editionSlug }}>
       <div className="min-h-[85vh] bg-slate-50">
-        {/* Tier Mode Status Banner */}
-        <div
-          className={clsx(
-            "border-b px-4 py-2 text-xs font-semibold flex items-center justify-between",
-            isReadOnly
-              ? "bg-amber-50 text-amber-900 border-amber-200"
-              : "bg-indigo-50 text-indigo-900 border-indigo-200"
-          )}
-        >
-          <div className="flex items-center gap-2 mx-auto max-w-7xl w-full">
-            <span>{isReadOnly ? "👁️ View-Only Tier Active:" : "🛠️ Manage Tier Active:"}</span>
-            <span className="font-normal">
-              {isReadOnly
-                ? "Full institutional visibility enabled. All action controls, configuration updates, and delete triggers are disabled."
-                : "Full operations authorized. You can add/reorder events, configure rubrics, import users, and advance gates."}
-            </span>
-            <span className="ml-auto">
-              <Badge variant={isReadOnly ? "warning" : "purple"} size="sm">
-                {userRole}
-              </Badge>
-            </span>
+        {/* Tier Mode Status Banner — only rendered once the real session role is known */}
+        {roleKnown && (
+          <div
+            className={clsx(
+              "border-b px-4 py-2 text-xs font-semibold flex items-center justify-between",
+              isReadOnly
+                ? "bg-amber-50 text-amber-900 border-amber-200"
+                : "bg-indigo-50 text-indigo-900 border-indigo-200"
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mx-auto max-w-7xl w-full">
+              <span>
+                {isReadOnly
+                  ? "👁️ View-only tier:"
+                  : effectiveRole === "SUPER_ADMIN"
+                  ? "🛠️ Super Admin:"
+                  : "🛠️ Manage tier active:"}
+              </span>
+              <span className="font-normal">
+                {isReadOnly
+                  ? "You can see everything, but changes must be made by a Manage-tier coordinator."
+                  : effectiveRole === "SUPER_ADMIN"
+                  ? "Full cross-edition lifecycle control, role elevation, and overrides."
+                  : "Full operations authorized. You can add/reorder events, configure rubrics, import users, and advance gates."}
+              </span>
+              <span className="ml-auto">
+                <Badge variant={isReadOnly ? "warning" : "purple"} size="sm">
+                  {effectiveRole}
+                </Badge>
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Coordinator Subnavigation */}
         <div className="border-b border-slate-200 bg-white">

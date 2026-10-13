@@ -393,16 +393,22 @@ export default function MentorCockpitPage() {
                   <div className="w-full text-right">
                     <div className="flex justify-between text-xs font-semibold text-slate-600 pb-1">
                       <span>Mandatory Progress</span>
-                      <span className="text-indigo-600">{team.progress.mandatoryProgressPercent}%</span>
+                      <span className="text-indigo-600">
+                        {team.progress.mandatoryTotal > 0 ? `${team.progress.mandatoryProgressPercent}%` : "—"}
+                      </span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div
                         className="bg-indigo-600 h-2 rounded-full"
-                        style={{ width: `${team.progress.mandatoryProgressPercent}%` }}
+                        style={{
+                          width: `${team.progress.mandatoryTotal > 0 ? team.progress.mandatoryProgressPercent : 0}%`,
+                        }}
                       />
                     </div>
                     <span className="text-[11px] text-slate-400 mt-1 block">
-                      {team.progress.mandatoryCompleted} of {team.progress.mandatoryTotal} Mandatory Completed
+                      {team.progress.mandatoryTotal > 0
+                        ? `${team.progress.mandatoryCompleted} of ${team.progress.mandatoryTotal} Mandatory Completed`
+                        : "No mandatory milestones defined"}
                     </span>
                   </div>
 

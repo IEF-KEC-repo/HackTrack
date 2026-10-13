@@ -126,6 +126,9 @@ export default function CoordinatorOverviewPage() {
     const s = e.status;
     return s === "SUBMISSION_OPEN" || s === "EVALUATION_ACTIVE" || s === "REGISTRATION_OPEN";
   });
+
+  // Never surface a completion percentage over a 0-denominator cohort.
+  const evalHasAssignments = !!evalSummary && evalSummary.totalAssigned > 0;
   const cprEvents = events.filter((e) => e.slug.startsWith("cpr-"));
 
   return (
@@ -178,12 +181,12 @@ export default function CoordinatorOverviewPage() {
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase text-slate-500">Evaluation Progress</p>
             <p className="mt-2 text-3xl font-extrabold text-slate-900">
-              {loading ? "…" : evalSummary ? `${evalSummary.completionPercent}%` : "—"}
+              {loading ? "…" : evalHasAssignments ? `${evalSummary!.completionPercent}%` : "—"}
             </p>
             <p className="mt-1 text-xs text-slate-500">
-              {evalSummary
-                ? `${evalSummary.totalSubmitted} of ${evalSummary.totalAssigned} reviews submitted`
-                : "No evaluations assigned yet"}
+              {evalHasAssignments
+                ? `${evalSummary!.totalSubmitted} of ${evalSummary!.totalAssigned} reviews submitted`
+                : "No reviews assigned yet"}
             </p>
           </div>
 

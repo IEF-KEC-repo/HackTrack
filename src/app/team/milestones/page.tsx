@@ -201,7 +201,8 @@ export default function TeamMilestonesPage() {
   const mandatoryCompleted =
     progress?.mandatoryCompleted ??
     mandatoryMilestones.filter((m) => m.status === "COMPLETED").length;
-  const progressPercent = progress?.mandatoryProgressPercent ?? 100;
+  const hasMandatoryMilestones = mandatoryTotal > 0;
+  const progressPercent = progress?.mandatoryProgressPercent ?? 0;
 
   const overdueCount = milestones.filter((m) => m.isOverdue).length;
 
@@ -466,8 +467,18 @@ export default function TeamMilestonesPage() {
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Mandatory Milestone Progress
             </span>
-            <Badge variant={progressPercent === 100 ? "success" : progressPercent >= 50 ? "info" : "warning"}>
-              {progressPercent}% Complete
+            <Badge
+              variant={
+                !hasMandatoryMilestones
+                  ? "default"
+                  : progressPercent === 100
+                  ? "success"
+                  : progressPercent >= 50
+                  ? "info"
+                  : "warning"
+              }
+            >
+              {hasMandatoryMilestones ? `${progressPercent}% Complete` : "—"}
             </Badge>
           </div>
           <div className="flex items-baseline gap-2">
@@ -478,11 +489,13 @@ export default function TeamMilestonesPage() {
           <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
             <div
               className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
+              style={{ width: `${hasMandatoryMilestones ? progressPercent : 0}%` }}
             />
           </div>
           <p className="text-xs text-slate-400">
-            Official milestone completion percentage determines gate progression into POC.
+            {hasMandatoryMilestones
+              ? "Official milestone completion percentage determines gate progression into POC."
+              : "No mandatory milestones have been defined by the coordinator yet."}
           </p>
         </div>
 

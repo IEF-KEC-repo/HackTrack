@@ -271,7 +271,7 @@ export default function CoordinatorProgressPage() {
   const totalMandatorySum = teams.reduce((acc, t) => acc + t.progress.mandatoryTotal, 0);
   const totalMandatoryCompleted = teams.reduce((acc, t) => acc + t.progress.mandatoryCompleted, 0);
   const cohortAverageProgress =
-    totalMandatorySum > 0 ? Math.round((totalMandatoryCompleted / totalMandatorySum) * 1000) / 10 : 100;
+    totalMandatorySum > 0 ? Math.round((totalMandatoryCompleted / totalMandatorySum) * 1000) / 10 : null;
   const totalOverdueItems = teams.reduce((acc, t) => acc + t.overdueCount, 0);
   const redTeamsCount = teams.filter((t) => t.currentHealth === "RED").length;
   const unassignedMentorsCount = teams.filter((t) => !t.mentor).length;
@@ -321,9 +321,13 @@ export default function CoordinatorProgressPage() {
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Cohort Progress Average
                 </span>
-                <p className="text-3xl font-black text-indigo-600">{cohortAverageProgress}%</p>
+                <p className="text-3xl font-black text-indigo-600">
+                  {cohortAverageProgress === null ? "—" : `${cohortAverageProgress}%`}
+                </p>
                 <p className="text-xs text-slate-400">
-                  {totalMandatoryCompleted} / {totalMandatorySum} total mandatory milestones delivered.
+                  {totalMandatorySum > 0
+                    ? `${totalMandatoryCompleted} / ${totalMandatorySum} total mandatory milestones delivered.`
+                    : "No mandatory milestones defined across assigned teams."}
                 </p>
               </div>
 
@@ -486,7 +490,11 @@ export default function CoordinatorProgressPage() {
                         {/* Mandatory Progress */}
                         <td className="px-5 py-3.5 whitespace-nowrap min-w-[150px]">
                           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 pb-1">
-                            <span>{team.progress.mandatoryProgressPercent}%</span>
+                            <span>
+                              {team.progress.mandatoryTotal > 0
+                                ? `${team.progress.mandatoryProgressPercent}%`
+                                : "—"}
+                            </span>
                             <span className="text-slate-400">
                               {team.progress.mandatoryCompleted}/{team.progress.mandatoryTotal}
                             </span>
@@ -494,7 +502,13 @@ export default function CoordinatorProgressPage() {
                           <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                             <div
                               className="bg-indigo-600 h-1.5 rounded-full"
-                              style={{ width: `${team.progress.mandatoryProgressPercent}%` }}
+                              style={{
+                                width: `${
+                                  team.progress.mandatoryTotal > 0
+                                    ? team.progress.mandatoryProgressPercent
+                                    : 0
+                                }%`,
+                              }}
                             />
                           </div>
                         </td>

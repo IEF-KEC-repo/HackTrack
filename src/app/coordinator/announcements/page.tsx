@@ -278,7 +278,7 @@ export default function CoordinatorAnnouncementsPage() {
       <div className="space-y-4">
         {filteredAnnouncements.map((ann) => {
           const readRate =
-            ann.eligibleCount > 0 ? Math.round((ann.readCount / ann.eligibleCount) * 100) : 100;
+            ann.eligibleCount > 0 ? Math.round((ann.readCount / ann.eligibleCount) * 100) : null;
 
           return (
             <div
@@ -332,12 +332,14 @@ export default function CoordinatorAnnouncementsPage() {
                   {/* Read Rate Progress Bar */}
                   <div className="flex items-center gap-2">
                     <span className="text-slate-600 font-semibold">
-                      {ann.readCount} / {ann.eligibleCount} read ({readRate}%)
+                      {readRate === null
+                        ? "No recipients yet"
+                        : `${ann.readCount} / ${ann.eligibleCount} read (${readRate}%)`}
                     </span>
                     <div className="w-24 bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div
                         className="bg-indigo-600 h-2 rounded-full transition-all"
-                        style={{ width: `${readRate}%` }}
+                        style={{ width: `${readRate ?? 0}%` }}
                       />
                     </div>
                   </div>

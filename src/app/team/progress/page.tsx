@@ -411,13 +411,19 @@ export default function ParticipantProgressPage() {
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="font-semibold text-slate-700">Overall Completion</span>
                       <span className="font-semibold text-indigo-700">
-                        {progress.overallProgressPercent}%
+                        {progress.totalMilestones > 0 ? `${progress.overallProgressPercent}%` : "—"}
                       </span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                       <div
                         className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, progress.overallProgressPercent)}%` }}
+                        style={{
+                          width: `${
+                            progress.totalMilestones > 0
+                              ? Math.min(100, progress.overallProgressPercent)
+                              : 0
+                          }%`,
+                        }}
                       />
                     </div>
                   </div>
