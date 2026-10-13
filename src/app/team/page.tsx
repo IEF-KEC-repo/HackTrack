@@ -934,12 +934,12 @@ export default function TeamHubPage() {
       {team && (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-5">
-            <div>
-              <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="font-mono text-base font-extrabold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-md border border-indigo-200">
                   {team.regCode}
                 </span>
-                <h1 className="text-2xl font-black text-slate-900">{team.name}</h1>
+                <h1 className="text-2xl font-black text-slate-900 break-words">{team.name}</h1>
                 <Badge variant={getStatusBadgeVariant(team.status)}>{team.status}</Badge>
               </div>
               <p className="mt-1 text-xs text-slate-500">
