@@ -247,7 +247,9 @@ async function main() {
 
   const sampleTeam = await prisma.team.upsert({
     where: { regCode: "HT26-T001" },
-    update: {},
+    // Repair the demo deck link on re-seed so databases that were seeded with the
+    // old (dead) presentation id also stop rendering Google's 404 page in the preview.
+    update: { slidesUrl, embedSlidesUrl },
     create: {
       editionId: edition.id,
       regCode: "HT26-T001",
