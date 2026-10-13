@@ -212,7 +212,7 @@ describe("HackTrack RBAC & Permission Matrix", () => {
   describe("Default Role Redirects", () => {
     it("routes each role to their designated default workspace", () => {
       expect(getAuthorizedRedirect("SUPER_ADMIN")).toBe("/admin");
-      expect(getAuthorizedRedirect("COORDINATOR_MANAGE")).toBe("/coordinator/manage");
+      expect(getAuthorizedRedirect("COORDINATOR_MANAGE")).toBe("/coordinator");
       expect(getAuthorizedRedirect("COORDINATOR_VIEW")).toBe("/coordinator");
       expect(getAuthorizedRedirect("EVALUATOR")).toBe("/evaluator");
       expect(getAuthorizedRedirect("MENTOR")).toBe("/mentor");

@@ -165,7 +165,7 @@ export function getAuthorizedRedirect(role?: EditionRole): string {
     case "SUPER_ADMIN":
       return "/admin";
     case "COORDINATOR_MANAGE":
-      return "/coordinator/manage";
+      return "/coordinator";
     case "COORDINATOR_VIEW":
       return "/coordinator";
     case "EVALUATOR":

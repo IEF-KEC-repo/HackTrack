@@ -715,6 +715,7 @@ export default function TeamHubPage() {
   };
 
   const isLead = myRole === "LEAD";
+  const leadName = team?.members?.find((m) => m.role === "LEAD")?.name ?? null;
   const isShortlisted = team?.status === "SHORTLISTED" || team?.status === "INCL_INNOVATZ";
   const isChangesRequested = team?.status === "CHANGES_REQUESTED";
   const isWithdrawn = team?.status === "WITHDRAWN";
@@ -927,6 +928,14 @@ export default function TeamHubPage() {
               ? "To resume your submission, contact the evaluation coordinator to re-open your idea for revisions."
               : "Your Team Lead can request to resume the submission via a coordinator."}
           </p>
+        </Alert>
+      )}
+
+      {/* Read-only banner for non-lead members */}
+      {team && myRole === "MEMBER" && (
+        <Alert variant="info" title="Read-only view">
+          You are a team member, so you can view everything but cannot edit. Only the team lead
+          {leadName ? ` (${leadName})` : ""} can edit the idea submission, invite teammates, or withdraw the team.
         </Alert>
       )}
 

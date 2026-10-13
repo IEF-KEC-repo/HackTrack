@@ -290,7 +290,9 @@ export default function MentorCockpitPage() {
             </p>
           </div>
           <span className="text-xs font-mono text-slate-400">
-            {isLoadingTeams ? "Loading…" : `${assignedTeams.length} team(s)`}
+            {isLoadingTeams
+              ? "Loading…"
+              : `${assignedTeams.length} ${assignedTeams.length === 1 ? "team" : "teams"}`}
           </span>
         </div>
 
@@ -343,7 +345,9 @@ export default function MentorCockpitPage() {
 
                     {/* Overdue Badge */}
                     {team.overdueCount > 0 && (
-                      <Badge variant="danger">⚠️ {team.overdueCount} Overdue Item(s)</Badge>
+                      <Badge variant="danger">
+                        ⚠️ {team.overdueCount} overdue {team.overdueCount === 1 ? "item" : "items"}
+                      </Badge>
                     )}
                   </div>
 
