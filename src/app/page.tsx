@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import { getAuthorizedRedirect, type EditionRole } from "@/lib/permissions";
 import {
   ArrowRight,
   Award,
@@ -46,6 +47,20 @@ interface TimelineResponse {
   edition: PublicEdition | null;
   events: TimelineEvent[];
   error?: string;
+}
+
+// The signed-in viewer, resolved from the session cookie via /api/auth/me.
+interface ViewerSession {
+  name: string;
+  email: string;
+  globalRole: string;
+  editionRole?: string | null;
+}
+
+/** Landing page for a role, mirroring the server-side auth redirect. */
+function dashboardHrefFor(user: ViewerSession): string {
+  if (user.globalRole === "SUPER_ADMIN" || user.editionRole === "SUPER_ADMIN") return "/admin";
+  return getAuthorizedRedirect((user.editionRole ?? undefined) as EditionRole | undefined);
 }
 
 const EVENT_STATUS_LABELS: Record<string, string> = {
@@ -194,6 +209,28 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Signed-in viewer resolved from the session cookie. `undefined` = unknown
+  // (still loading), `null` = signed out, object = signed in.
+  const [viewer, setViewer] = useState<ViewerSession | null | undefined>(undefined);
+
+  // Remember the session: if the auth cookie is still valid, the front door
+  // greets the visitor as signed in instead of offering "Login" again.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        const data = await res.json();
+        if (active) setViewer(data?.user ?? null);
+      } catch {
+        if (active) setViewer(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -238,6 +275,16 @@ export default function HomePage() {
     !!firstEvent &&
     REGISTRATION_OPEN_EVENT_STATUSES.includes(firstEvent.status);
 
+  // Auth-aware call-to-action: when the session cookie resolves to a real user,
+  // every "Login" entry point becomes a jump into that user's dashboard.
+  const dashboardHref = viewer ? dashboardHrefFor(viewer) : null;
+  const viewerFirstName = viewer?.name?.trim().split(/\s+/)[0] ?? null;
+  const portalLabel = dashboardHref
+    ? viewerFirstName
+      ? `Continue as ${viewerFirstName}`
+      : "Go to Dashboard"
+    : "Login";
+
   return (
     <div className="flex min-h-full flex-col bg-white">
       {/* Skip link: lands keyboard/SR users directly in the main content */}
@@ -281,10 +328,10 @@ export default function HomePage() {
               </a>
             ))}
             <a
-              href="/auth/login"
+              href={dashboardHref ?? "/auth/login"}
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-600"
             >
-              Login
+              {portalLabel}
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </a>
           </nav>
@@ -327,10 +374,10 @@ export default function HomePage() {
               </a>
             ))}
             <a
-              href="/auth/login"
+              href={dashboardHref ?? "/auth/login"}
               className="mt-2 block rounded-lg bg-indigo-600 px-3 py-2.5 text-center text-sm font-bold text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-inset"
             >
-              Login
+              {portalLabel}
             </a>
           </nav>
         )}
@@ -382,10 +429,10 @@ export default function HomePage() {
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </a>
                   <a
-                    href="/auth/login"
+                    href={dashboardHref ?? "/auth/login"}
                     className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
                   >
-                    Access the Portal
+                    {dashboardHref ? "Open My Dashboard" : "Access the Portal"}
                   </a>
                 </div>
 
@@ -773,10 +820,10 @@ export default function HomePage() {
 
             <div className="flex flex-col items-center gap-4">
               <a
-                href="/auth/login"
+                href={dashboardHref ?? "/auth/login"}
                 className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition-colors hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
-                Login to the Portal
+                {dashboardHref ? "Go to Dashboard" : "Login to the Portal"}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </a>
               <a

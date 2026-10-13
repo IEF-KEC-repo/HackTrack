@@ -27,14 +27,23 @@ export async function middleware(req: NextRequest) {
   // ----------------------------------------------------
   if (pathname.startsWith("/api/")) {
     let tier = RATE_LIMIT_TIERS.GENERAL;
+    let rateKey = `${ip}:${pathname.split("/")[2] || "root"}`;
 
     if (pathname.startsWith("/api/auth")) {
-      tier = RATE_LIMIT_TIERS.AUTH;
+      // The identity probe (`GET /api/auth/me`) fires on every page load to
+      // paint the header. Give it its own generous budget so ordinary
+      // navigation can never exhaust the strict brute-force budget that guards
+      // login/register — otherwise the probe would 429 and the header would
+      // silently render as if the visitor were signed out.
+      if (pathname === "/api/auth/me") {
+        rateKey = `${ip}:auth-me`;
+      } else {
+        tier = RATE_LIMIT_TIERS.AUTH;
+      }
     } else if (pathname.startsWith("/api/evaluator")) {
       tier = RATE_LIMIT_TIERS.EVALUATOR;
     }
 
-    const rateKey = `${ip}:${pathname.split("/")[2] || "root"}`;
     const rateCheck = checkRateLimit(rateKey, tier);
 
     if (!rateCheck.allowed) {
@@ -58,14 +67,54 @@ export async function middleware(req: NextRequest) {
   }
 
   // ----------------------------------------------------
-  // 2. PUBLIC ASSETS & WHITELISTED PATHS
+  // 2. REMEMBERED SESSION: SKIP THE LOGIN SCREEN
+  // ----------------------------------------------------
+  // A visitor whose auth cookie is still valid should never be shown the login
+  // form again. Send them straight back into their dashboard — or to the page
+  // they were originally trying to reach (the `from` param set on redirect).
+  if (pathname === "/auth/login") {
+    let existingToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+    if (!existingToken) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        existingToken = authHeader.substring(7);
+      }
+    }
+    const existingSession = existingToken
+      ? toSessionContext(await verifySessionToken(existingToken))
+      : null;
+
+    if (existingSession) {
+      const requested = req.nextUrl.searchParams.get("from");
+      const safeRequested =
+        requested &&
+        requested.startsWith("/") &&
+        !requested.startsWith("//") &&
+        !requested.includes("\\") &&
+        !requested.startsWith("/auth/")
+          ? requested
+          : null;
+
+      const landing =
+        existingSession.globalRole === "SUPER_ADMIN" ||
+        existingSession.editionRole === "SUPER_ADMIN"
+          ? "/admin"
+          : getAuthorizedRedirect(existingSession.editionRole);
+      const destination = safeRequested ?? (landing.startsWith("/auth/") ? "/" : landing);
+
+      return addSecurityHeaders(NextResponse.redirect(new URL(destination, req.url)));
+    }
+  }
+
+  // ----------------------------------------------------
+  // 3. PUBLIC ASSETS & WHITELISTED PATHS
   // ----------------------------------------------------
   if (isPublicPath(pathname)) {
     return addSecurityHeaders(NextResponse.next());
   }
 
   // ----------------------------------------------------
-  // 3. SESSION TOKEN EXTRACTION & VERIFICATION
+  // 4. SESSION TOKEN EXTRACTION & VERIFICATION
   // ----------------------------------------------------
   let token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (!token) {
@@ -79,7 +128,7 @@ export async function middleware(req: NextRequest) {
   const sessionContext = toSessionContext(payload);
 
   // ----------------------------------------------------
-  // 4. ROLE & METHOD ACCESS AUTHORIZATION
+  // 5. ROLE & METHOD ACCESS AUTHORIZATION
   // ----------------------------------------------------
   const access = pathname.startsWith("/api/")
     ? canAccessApiRoute(sessionContext, pathname, req.method)
