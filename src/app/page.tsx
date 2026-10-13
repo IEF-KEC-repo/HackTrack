@@ -229,9 +229,9 @@ export default function HomePage() {
 
   const edition = timeline?.edition ?? null;
   const events = timeline?.events ?? [];
-  const editionLine = edition
-    ? `${edition.name} (${edition.slug})`
-    : "Live Edition";
+  // Only render the edition suffix when a real edition is loaded; otherwise the
+  // badge would read "Live Edition: Live Edition".
+  const editionLine = edition ? `${edition.name} (${edition.slug})` : null;
   const firstEvent = events[0] ?? null;
   const registrationOpen =
     !!edition &&
@@ -355,7 +355,7 @@ export default function HomePage() {
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                   </span>
-                  Live Edition: {editionLine}
+                  {editionLine ? `Live Edition: ${editionLine}` : "Live Edition"}
                 </div>
 
                 <h1 className="mt-6 max-w-3xl text-4xl font-black leading-tight tracking-tight text-white sm:text-6xl">
@@ -442,7 +442,7 @@ export default function HomePage() {
                   every evaluation uses a shared rubric with normalized scoring.
                 </p>
                 <p className="mt-4 text-base leading-relaxed text-slate-600">
-                  The five gates of the program take a raw idea, pressure-test
+                  The seven gates of the program take a raw idea, pressure-test
                   it against mentors and panellists, and grow it into a working
                   proof of concept presented on Demo Day.
                 </p>
@@ -462,8 +462,18 @@ export default function HomePage() {
                   },
                   {
                     icon: GitBranch,
-                    title: "Continuous Reviews",
-                    text: "Rolling project reviews with fortnightly mentor check-ins to keep teams moving.",
+                    title: "Continuous Project Review 1",
+                    text: "Rolling project review with a fortnightly mentor check-in to keep teams moving.",
+                  },
+                  {
+                    icon: GitBranch,
+                    title: "Continuous Project Review 2",
+                    text: "The mid-program gate where the working prototype is pressure-tested by a panel.",
+                  },
+                  {
+                    icon: GitBranch,
+                    title: "Continuous Project Review 3",
+                    text: "The final review before shortlisted teams are cleared to build their proof of concept.",
                   },
                   {
                     icon: CheckCircle2,
