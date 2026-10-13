@@ -239,8 +239,11 @@ async function main() {
   const teamMember = seededUsers["member@hacktrack.edu"];
   const mentorUser = seededUsers["mentor@hacktrack.edu"];
 
-  const slidesUrl = "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing";
-  const embedSlidesUrl = "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000";
+  // Real, publicly viewable deck (YC seed deck template) so the demo embed renders.
+  // NOTE: the previous value pointed at Google's API-docs sample id, which is not a
+  // public file and returns HTTP 404 ("file does not exist") inside the iframe.
+  const slidesUrl = "https://docs.google.com/presentation/d/1wvlvQBOPtmIbN3I7onp--7X5RzEJFp_ajQlasrEagho/edit?usp=sharing";
+  const embedSlidesUrl = "https://docs.google.com/presentation/d/1wvlvQBOPtmIbN3I7onp--7X5RzEJFp_ajQlasrEagho/embed?start=false&loop=false&delayms=3000";
 
   const sampleTeam = await prisma.team.upsert({
     where: { regCode: "HT26-T001" },

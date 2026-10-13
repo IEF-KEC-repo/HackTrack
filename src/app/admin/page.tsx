@@ -16,13 +16,48 @@ interface EditionInvitation {
   expiresAt: string;
 }
 
+interface EditionMembership {
+  id: string;
+  userId: string;
+  role: string;
+  user?: { id: string; name: string; email: string } | null;
+}
+
 interface EditionInfo {
   id: string;
   name: string;
   slug: string;
   status: string;
   invitations?: EditionInvitation[];
+  memberships?: EditionMembership[];
 }
+
+interface AuditLogEntry {
+  id: string;
+  createdAt?: string;
+  actor?: { email?: string } | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+}
+
+interface CohortFunnel {
+  totalRegisteredTeams: number;
+  stages: Array<{ sequenceIndex: number; eventName: string; status: string; activeCount: number }>;
+}
+
+interface RoleCounts {
+  [role: string]: number;
+}
+
+const ROLE_BREAKDOWN: Array<[string, string]> = [
+  ["PARTICIPANT", "Participants"],
+  ["MENTOR", "Mentors"],
+  ["EVALUATOR", "Evaluators"],
+  ["COORDINATOR_MANAGE", "Coordinators (Manage)"],
+  ["COORDINATOR_VIEW", "Coordinators (View)"],
+  ["SUPER_ADMIN", "Super Admins"],
+];
 
 type Notice = { type: "success" | "error"; msg: string } | null;
 
@@ -30,7 +65,8 @@ export default function AdminPage() {
   const [edition, setEdition] = useState<EditionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [auditCount, setAuditCount] = useState<number | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [funnel, setFunnel] = useState<CohortFunnel | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
 
   // Clone Edition
@@ -51,17 +87,20 @@ export default function AdminPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [editionRes, auditRes] = await Promise.all([
+      const [editionRes, auditRes, funnelRes] = await Promise.all([
         fetch("/api/coordinator/edition-data?slug=ht26", { cache: "no-store" }),
         fetch("/api/coordinator/audit-logs", { cache: "no-store" }),
+        fetch("/api/coordinator/analytics/funnel?edition=ht26", { cache: "no-store" }),
       ]);
       const editionJson = await editionRes.json().catch(() => ({}));
       const auditJson = await auditRes.json().catch(() => ({}));
+      const funnelJson = await funnelRes.json().catch(() => ({}));
       if (!editionRes.ok) {
         throw new Error(editionJson.error || "Failed to load edition data.");
       }
       setEdition(editionJson.edition ?? null);
-      setAuditCount(Array.isArray(auditJson.logs) ? auditJson.logs.length : null);
+      setAuditLogs(Array.isArray(auditJson.logs) ? auditJson.logs : []);
+      setFunnel(funnelJson.funnel ?? null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load institutional data.");
     } finally {
@@ -162,7 +201,15 @@ export default function AdminPage() {
   };
 
   const pendingInvites = edition?.invitations?.length ?? 0;
-  const auditValue = auditCount === null ? "—" : auditCount.toLocaleString();
+  const auditValue = loading ? "—" : auditLogs.length.toLocaleString();
+  const recentLogs = auditLogs.slice(0, 6);
+  const roleCounts = (edition?.memberships ?? []).reduce<RoleCounts>((acc, m) => {
+    acc[m.role] = (acc[m.role] || 0) + 1;
+    return acc;
+  }, {});
+  const activeStage = funnel?.stages.find((s) =>
+    s.status === "SUBMISSION_OPEN" || s.status === "EVALUATION_ACTIVE" || s.status === "REGISTRATION_OPEN"
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -252,7 +299,7 @@ export default function AdminPage() {
             Real-time log of security events and score overrides.
           </p>
           <p className="mt-2 text-xs text-slate-400">
-            {loading ? "Loading audit records…" : `${auditValue} recorded audit ${auditCount === 1 ? "entry" : "entries"}.`}
+            {loading ? "Loading audit records…" : `${auditValue} recorded audit ${auditLogs.length === 1 ? "entry" : "entries"}.`}
           </p>
           <div className="mt-4">
             <Link
@@ -261,6 +308,109 @@ export default function AdminPage() {
             >
               View all {auditValue} audit records →
             </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Platform-wide telemetry — real data reused from existing coordinator endpoints */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Recent Audit Activity */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Recent Audit Activity</h2>
+            <Link href="/coordinator/audit" className="text-xs font-semibold text-indigo-600 hover:underline">
+              View full trail →
+            </Link>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Latest recorded governance events and privileged actions across the platform.
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-xs">
+              <thead className="text-slate-500">
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">Timestamp (UTC)</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">Actor</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">Action</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">Entity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                      Loading recent activity…
+                    </td>
+                  </tr>
+                ) : recentLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                      No audited operations recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  recentLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/60">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-500">
+                        {log.createdAt
+                          ? new Date(log.createdAt).toISOString().slice(0, 19).replace("T", " ")
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{log.actor?.email || "System"}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant="info" size="sm">
+                          {log.action}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-slate-600">
+                        {log.entityType} ({log.entityId})
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Edition Snapshot */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="font-semibold text-slate-900">Edition Snapshot</h2>
+          <p className="mt-1 text-xs text-slate-500">Platform-wide totals for the active edition.</p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase text-slate-500">Registered Teams</p>
+              <p className="mt-1 text-2xl font-extrabold text-slate-900">
+                {loading ? "…" : funnel?.totalRegisteredTeams ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase text-slate-500">Active Stage</p>
+              <p className="mt-1 text-sm font-bold text-indigo-600">
+                {loading ? "…" : activeStage ? activeStage.eventName : "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase text-slate-500">Users by Role</p>
+            <ul className="mt-2 space-y-1.5 text-xs">
+              {loading ? (
+                <li className="text-slate-500">Loading…</li>
+              ) : (
+                ROLE_BREAKDOWN.map(([key, label]) => (
+                  <li key={key} className="flex items-center justify-between">
+                    <span className="text-slate-600">{label}</span>
+                    <span className="font-semibold text-slate-900">{roleCounts[key] || 0}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+            <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+              {pendingInvites} pending invitation{pendingInvites === 1 ? "" : "s"} ·{" "}
+              {funnel?.stages.length ?? 0} pipeline stages
+            </p>
           </div>
         </div>
       </div>
